@@ -13,6 +13,7 @@ class GameScene extends Phaser.Scene {
         this.isProcessing = false;
         this.score = 0;
         this.hintCount = 10;
+        this.shuffleCount = 10;
         this.hintTiles = [];
         this.boardGrid = []; // 7x8 网格，存储每格的牌信息
     }
@@ -200,8 +201,14 @@ class GameScene extends Phaser.Scene {
         this.add.rectangle(this.w / 2, bottomY, this.w, 90, 0x2c3e50).setOrigin(0.5);
 
         // 重新洗牌按钮
-        const shuffleBtn = this.add.image(this.w / 2 - 100, bottomY, 'icon-shuffle').setScale(0.6).setInteractive({ useHandCursor: true });
-        shuffleBtn.on('pointerdown', () => {
+        this.shuffleBtn = this.add.image(this.w / 2 - 100, bottomY, 'icon-shuffle').setScale(0.6).setInteractive({ useHandCursor: true });
+        this.shuffleCountText = this.add.text(this.w / 2 - 80, bottomY - 25, `${this.shuffleCount}`, {
+            fontSize: '16px',
+            color: '#ffffff',
+            backgroundColor: '#e74c3c',
+            padding: { x: 6, y: 2 }
+        }).setOrigin(0.5);
+        this.shuffleBtn.on('pointerdown', () => {
             this.shuffleBoard();
         });
 
@@ -385,31 +392,165 @@ class GameScene extends Phaser.Scene {
         this.hintTiles = [];
     }
 
-    shuffleBoard() {
+    // 洗牌弹性动画：收拢到中心 → 执行逻辑 → 展开回原位
+    animateShuffleBoard(callback) {
         const unmatchedTiles = this.tiles.filter(t => !t.getData('matched'));
-        const types = this.getShuffledTypesForLayer2(unmatchedTiles);
+        if (unmatchedTiles.length === 0) return;
 
-        unmatchedTiles.forEach((tile, i) => {
-            const newType = types[i];
-            tile.setData('type', newType);
-            // 更新牌面图片
-            const tileImg = tile.list[0]; // 第一个子元素是图片
-            if (tileImg && tileImg.setTexture) {
-                tileImg.setTexture(`tile_${newType % 34}`);
-            }
-            // 清除残留的高亮/选中效果
-            tile.setData('hintTint', false);
-            // 清除蒙版色调
-            this.clearTileSelection(tile);
+        // 禁用所有牌的交互
+        unmatchedTiles.forEach(t => t.disableInteractive());
+        this.isProcessing = true;
+
+        const centerX = this.w / 2;
+        const centerY = this.h / 2;
+        const duration = 600;
+
+        // 收集每张牌的原始位置和对应阴影
+        const items = unmatchedTiles.map(tile => {
+            const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+            return {
+                tile,
+                shadow: shadowEntry ? shadowEntry.shadow : null,
+                origX: tile.x,
+                origY: tile.y,
+                origDepth: tile.depth
+            };
         });
 
-        this.clearHint();
-        this.recalculateAllFreeStatus();
+        // 找出距离中心最近且最高层级的牌，设为最顶层
+        let topItem = items[0];
+        let minDist = Infinity;
+        items.forEach(item => {
+            const dist = Math.hypot(item.origX - centerX, item.origY - centerY);
+            if (dist < minDist || (dist === minDist && item.origDepth > topItem.origDepth)) {
+                minDist = dist;
+                topItem = item;
+            }
+        });
 
-        // 洗牌后检查是否还有自由配对，没有则重新洗牌
-        if (!this.hasFreePairs()) {
-            this.smartShuffle();
+        // 收拢阶段：所有牌移动到中心
+        let gatherCount = items.length;
+        const onGatherComplete = () => {
+            gatherCount--;
+            if (gatherCount > 0) return;
+
+            // 收拢完成，执行洗牌逻辑
+            if (callback) callback();
+
+            // 顿 400ms 后再展开
+            this.time.delayedCall(400, () => {
+                // 展开阶段：所有牌回到原位，阴影恢复alpha
+                let spreadCount = items.length;
+                const onSpreadComplete = () => {
+                    spreadCount--;
+                    if (spreadCount > 0) return;
+
+                    // 展开完成，恢复交互
+                    items.forEach(item => {
+                        item.tile.setInteractive({ useHandCursor: true });
+                        item.tile.setDepth(item.origDepth);
+                        if (item.shadow) {
+                            item.shadow.x = item.origX;
+                            item.shadow.y = item.origY;
+                        }
+                    });
+                    this.isProcessing = false;
+                };
+
+                items.forEach(item => {
+                    // 阴影恢复alpha到1
+                    if (item.shadow) {
+                        this.tweens.add({
+                            targets: item.shadow,
+                            alpha: 1,
+                            duration: duration,
+                            ease: 'Sine.easeOut'
+                        });
+                    }
+                    this.tweens.add({
+                        targets: [item.tile],
+                        x: item.origX,
+                        y: item.origY,
+                        duration: duration,
+                        ease: 'Back.easeOut',
+                        onUpdate: () => {
+                            if (item.shadow) {
+                                item.shadow.x = item.tile.x;
+                                item.shadow.y = item.tile.y;
+                            }
+                        },
+                        onComplete: onSpreadComplete
+                    });
+                });
+            });
+        };
+
+        items.forEach(item => {
+            // 收拢前，最近的牌设为最高层
+            if (item === topItem) {
+                item.tile.setDepth(9999);
+            }
+
+            // 阴影渐变alpha：topItem维持1，其余随机延时降低到0
+            if (item.shadow && item !== topItem) {
+                const randomDelay = Math.random() * duration * 0.6; // 随机延时0~360ms
+                this.tweens.add({
+                    targets: item.shadow,
+                    alpha: 0,
+                    duration: duration - randomDelay,
+                    delay: randomDelay,
+                    ease: 'Sine.easeIn'
+                });
+            }
+
+            this.tweens.add({
+                targets: [item.tile],
+                x: centerX,
+                y: centerY,
+                duration: duration,
+                ease: 'Back.easeIn',
+                onUpdate: () => {
+                    if (item.shadow) {
+                        item.shadow.x = item.tile.x;
+                        item.shadow.y = item.tile.y;
+                    }
+                },
+                onComplete: onGatherComplete
+            });
+        });
+    }
+
+    shuffleBoard() {
+        if (this.shuffleCount <= 0) return;
+        this.shuffleCount--;
+        this.shuffleCountText.setText(`${this.shuffleCount}`);
+        if (this.shuffleCount <= 0) {
+            this.shuffleBtn.setAlpha(0.3);
+            this.shuffleBtn.disableInteractive();
         }
+
+        const unmatchedTiles = this.tiles.filter(t => !t.getData('matched'));
+        this.clearHint();
+
+        this.animateShuffleBoard(() => {
+            const types = this.getShuffledTypesForLayer2(unmatchedTiles);
+            unmatchedTiles.forEach((tile, i) => {
+                const newType = types[i];
+                tile.setData('type', newType);
+                const tileImg = tile.list[0];
+                if (tileImg && tileImg.setTexture) {
+                    tileImg.setTexture(`tile_${newType % 34}`);
+                }
+                tile.setData('hintTint', false);
+                this.clearTileSelection(tile);
+            });
+            this.recalculateAllFreeStatus();
+
+            // 洗牌后检查是否还有自由配对，没有则直接执行逻辑（不嵌套动画）
+            if (!this.hasFreePairs()) {
+                this.doSmartShuffleLogic();
+            }
+        });
     }
 
     // 生成第二层牌的布局（基于第一层牌的几何接触关系）
@@ -1706,11 +1847,15 @@ class GameScene extends Phaser.Scene {
         return Object.values(typeCounts).some(count => count >= 2);
     }
 
-    // 智能洗牌：保证洗完后至少有一对自由牌可配对，且所有牌成对
+    // 智能洗牌：带动画版本，被外部调用（消除后无配对、提示无配对）
     smartShuffle() {
+        this.animateShuffleBoard(() => this.doSmartShuffleLogic());
+    }
+
+    // 智能洗牌纯逻辑：50次尝试，保证至少一对自由牌可配对
+    doSmartShuffleLogic() {
         const maxAttempts = 50;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            // 执行一次普通洗牌
             const unmatchedTiles = this.tiles.filter(t => !t.getData('matched'));
 
             // 重新生成成对类型

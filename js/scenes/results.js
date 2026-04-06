@@ -25,7 +25,7 @@ class ResultsScene extends Phaser.Scene {
 
         if (this.completed) {
             // 成功图标
-            this.add.image(w / 2, h * 0.22, 'icon-trophy').setScale(3);
+            this.add.image(w / 2, h * 0.22, 'icon-trophy').setScale(1.0);
 
             this.add.text(w / 2, h * 0.38, `第 ${this.level} 关完成！`, {
                 fontSize: '36px',
@@ -57,7 +57,7 @@ class ResultsScene extends Phaser.Scene {
             }
         } else {
             // 失败图标
-            this.add.image(w / 2, h * 0.22, 'icon-fail').setScale(3);
+            this.add.image(w / 2, h * 0.22, 'icon-fail').setScale(1.0);
 
             this.add.text(w / 2, h * 0.38, `第 ${this.level} 关未完成`, {
                 fontSize: '36px',
