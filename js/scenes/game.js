@@ -41,8 +41,8 @@ class GameScene extends Phaser.Scene {
         this.w = this.cameras.main.width;
         this.h = this.cameras.main.height;
 
-        // 背景
-        this.add.rectangle(0, 0, this.w, this.h, 0x34495e).setOrigin(0);
+        // 背景（最底层）
+        this.add.rectangle(0, 0, this.w, this.h, 0x34495e).setOrigin(0).setDepth(-9999);
 
         // 顶部信息栏背景
         this.add.rectangle(0, 0, this.w, 90, 0x2c3e50).setOrigin(0);
@@ -113,24 +113,24 @@ class GameScene extends Phaser.Scene {
 
     showConfirmDialog(message, onConfirm) {
         const overlay = this.add.rectangle(this.w / 2, this.h / 2, this.w, this.h, 0x000000, 0.5)
-            .setInteractive().setDepth(100);
+            .setInteractive().setDepth(5000);
 
         const dialogBg = this.add.rectangle(this.w / 2, this.h / 2 - 40, 400, 200, 0x2c3e50)
-            .setStrokeStyle(2, 0x7f8c8d).setDepth(101);
+            .setStrokeStyle(2, 0x7f8c8d).setDepth(5001);
 
         const msgText = this.add.text(this.w / 2, this.h / 2 - 90, message, {
             fontSize: '22px',
             color: '#ecf0f1',
             wordWrap: { width: 350 },
             align: 'center'
-        }).setOrigin(0.5).setDepth(101);
+        }).setOrigin(0.5).setDepth(5001);
 
         const confirmBtn = this.add.text(this.w / 2 - 80, this.h / 2, '确定', {
             fontSize: '22px',
             color: '#ffffff',
             backgroundColor: '#e74c3c',
             padding: { x: 25, y: 10 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(101);
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
 
         confirmBtn.on('pointerdown', () => {
             this.destroyDialog(overlay, dialogBg, msgText, confirmBtn, cancelBtn);
@@ -142,7 +142,7 @@ class GameScene extends Phaser.Scene {
             color: '#ffffff',
             backgroundColor: '#3498db',
             padding: { x: 25, y: 10 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(101);
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
 
         cancelBtn.on('pointerdown', () => {
             this.destroyDialog(overlay, dialogBg, msgText, confirmBtn, cancelBtn);
@@ -151,23 +151,23 @@ class GameScene extends Phaser.Scene {
 
     showMenu() {
         const overlay = this.add.rectangle(this.w / 2, this.h / 2, this.w, this.h, 0x000000, 0.5)
-            .setInteractive().setDepth(100);
+            .setInteractive().setDepth(5000);
 
         const dialogBg = this.add.rectangle(this.w / 2, this.h / 2, 350, 250, 0x2c3e50)
-            .setStrokeStyle(2, 0x7f8c8d).setDepth(101);
+            .setStrokeStyle(2, 0x7f8c8d).setDepth(5001);
 
         const title = this.add.text(this.w / 2, this.h / 2 - 90, '菜单', {
             fontSize: '28px',
             color: '#ecf0f1',
             fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(101);
+        }).setOrigin(0.5).setDepth(5001);
 
         const restartBtn = this.add.text(this.w / 2, this.h / 2 - 20, '重新开始', {
             fontSize: '24px',
             color: '#ffffff',
             backgroundColor: '#e67e22',
             padding: { x: 40, y: 12 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(101);
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
 
         restartBtn.on('pointerdown', () => {
             this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2);
@@ -179,7 +179,7 @@ class GameScene extends Phaser.Scene {
             color: '#ffffff',
             backgroundColor: '#3498db',
             padding: { x: 40, y: 12 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(101);
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
 
         menuBtn2.on('pointerdown', () => {
             this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2);
@@ -717,6 +717,196 @@ class GameScene extends Phaser.Scene {
         this.recalculateAllFreeStatus();
     }
 
+    // 碰撞消除动画：起飞 → 靠近 → 缩小消失
+    animateCollision(tileA, tileB, onComplete) {
+        const ax = tileA.x;
+        const ay = tileA.y;
+        const bx = tileB.x;
+        const by = tileB.y;
+
+        // 碰撞点：两牌连线中点
+        const cx = (ax + bx) / 2;
+        const cy = (ay + by) / 2;
+
+        // 判断左右关系：x小的在左，偏移负；x大的在右，偏移正
+        const offset = 200;
+        const aIsLeft = ax <= bx;
+        const aOffX = aIsLeft ? -offset : offset;
+        const bOffX = aIsLeft ? offset : -offset;
+
+        // 起飞目标位置（碰撞点两侧）
+        const aFlyX = cx + aOffX;
+        const aFlyY = cy;
+        const bFlyX = cx + bOffX;
+        const bFlyY = cy;
+
+        // 牌的尺寸（用于计算接触点）
+        const tileW = tileA.getData('tileW');
+
+        // 确保在最上层
+        tileA.setDepth(3000);
+        tileB.setDepth(3000);
+        const seA = this.shadowLayer.find(s => s.tile === tileA);
+        const seB = this.shadowLayer.find(s => s.tile === tileB);
+        if (seA) seA.shadow.setDepth(2999);
+        if (seB) seB.shadow.setDepth(2999);
+
+        // 阶段1：起飞（330ms，Sine.easeOut）
+        this.tweens.add({
+            targets: [tileA],
+            x: aFlyX,
+            y: aFlyY,
+            duration: 330,
+            ease: 'Sine.easeOut',
+            onUpdate: () => {
+                if (seA) { seA.shadow.x = tileA.x; seA.shadow.y = tileA.y; }
+            }
+        });
+
+        this.tweens.add({
+            targets: [tileB],
+            x: bFlyX,
+            y: bFlyY,
+            duration: 330,
+            ease: 'Sine.easeOut',
+            onUpdate: () => {
+                if (seB) { seB.shadow.x = tileB.x; seB.shadow.y = tileB.y; }
+            },
+            onComplete: () => {
+                // 阶段2：靠近（30ms，Sine.easeInOut）
+                // 接触点：左牌右边缘 = 右牌左边缘
+                // 左牌中心 = 接触点 - tileW/2，右牌中心 = 接触点 + tileW/2
+                const contactX = aIsLeft ? (aFlyX + bFlyX) / 2 : (aFlyX + bFlyX) / 2;
+                const leftContactX = contactX - tileW / 2;
+                const rightContactX = contactX + tileW / 2;
+
+                const aApproachX = aIsLeft ? leftContactX : rightContactX;
+                const bApproachX = aIsLeft ? rightContactX : leftContactX;
+
+                this.tweens.add({
+                    targets: [tileA],
+                    x: aApproachX,
+                    duration: 30,
+                    ease: 'Sine.easeInOut',
+                    onUpdate: () => {
+                        if (seA) { seA.shadow.x = tileA.x; seA.shadow.y = tileA.y; }
+                    }
+                });
+
+                this.tweens.add({
+                    targets: [tileB],
+                    x: bApproachX,
+                    duration: 30,
+                    ease: 'Sine.easeInOut',
+                    onUpdate: () => {
+                        if (seB) { seB.shadow.x = tileB.x; seB.shadow.y = tileB.y; }
+                    },
+                    onComplete: () => {
+                        // 阶段3：缩小消失（300ms，Sine.easeIn）
+                        this.tweens.add({
+                            targets: [tileA],
+                            scaleX: 0,
+                            scaleY: 0,
+                            duration: 300,
+                            ease: 'Sine.easeIn'
+                        });
+                        this.tweens.add({
+                            targets: [tileB],
+                            scaleX: 0,
+                            scaleY: 0,
+                            duration: 300,
+                            ease: 'Sine.easeIn'
+                        });
+                        if (seA) {
+                            this.tweens.add({
+                                targets: [seA.shadow],
+                                scaleX: 0,
+                                scaleY: 0,
+                                alpha: 0,
+                                duration: 300,
+                                ease: 'Sine.easeIn'
+                            });
+                        }
+                        if (seB) {
+                            this.tweens.add({
+                                targets: [seB.shadow],
+                                scaleX: 0,
+                                scaleY: 0,
+                                alpha: 0,
+                                duration: 300,
+                                ease: 'Sine.easeIn',
+                                onComplete: () => {
+                                    // 阶段4：隐藏并回调
+                                    if (seA) { seA.shadow.setVisible(false); }
+                                    if (seB) { seB.shadow.setVisible(false); }
+                                    tileA.setVisible(false);
+                                    tileB.setVisible(false);
+                                    tileA.disableInteractive();
+                                    tileB.disableInteractive();
+                                    if (onComplete) onComplete();
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+        });
+    }
+    animateSelectTile(tile) {
+        const tileImg = tile.list[0];
+        if (tileImg && tileImg.setTint) {
+            tileImg.setTint(0x90ee90);
+        }
+        if (tileImg) {
+            tileImg.setOrigin(0.5);
+            const targetScale = tile.getData('baseImgScale') * 1.15;
+            this.tweens.add({
+                targets: tileImg,
+                scaleX: targetScale,
+                scaleY: targetScale,
+                duration: 150,
+                ease: 'Sine.easeInOut'
+            });
+        }
+        tile.setDepth(2000);
+        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+        if (shadowEntry) {
+            shadowEntry.shadow.setDepth(1999);
+        }
+    }
+
+    // 取消选中牌的动画效果（缓入缓出缩小）
+    animateDeselectTile(tile) {
+        const tileImg = tile.list[0];
+        if (tileImg) {
+            tileImg.setOrigin(0.5);
+            const targetScale = tile.getData('imgScale');
+            this.tweens.add({
+                targets: tileImg,
+                scaleX: targetScale,
+                scaleY: targetScale,
+                duration: 150,
+                ease: 'Sine.easeInOut'
+            });
+            // 恢复 tint：锁定牌灰色，提示牌黄色，自由牌清除
+            if (!tile.getData('isFree')) {
+                tileImg.setTint(0x999999);
+            } else if (tile.getData('hintTint')) {
+                tileImg.setTint(0xf1c40f);
+            } else {
+                tileImg.clearTint();
+            }
+        }
+        tile.setDepth(tile.getData('defaultDepth'));
+
+        // 阴影恢复该层的阴影层
+        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+        if (shadowEntry) {
+            const layer = tile.getData('layer');
+            shadowEntry.shadow.setDepth(layer === 0 ? -1 : 999);
+        }
+    }
+
     onTileClick(tile) {
         if (this.isProcessing) return;
         if (tile.getData('matched')) return;
@@ -726,7 +916,7 @@ class GameScene extends Phaser.Scene {
 
         // 再次点击已选中的牌 → 取消选中
         if (this.selectedTiles.includes(tile)) {
-            this.clearTileSelection(tile);
+            this.animateDeselectTile(tile);
             this.selectedTiles = this.selectedTiles.filter(t => t !== tile);
             return;
         }
@@ -740,36 +930,21 @@ class GameScene extends Phaser.Scene {
                 this.isProcessing = true;
 
                 // 选中第二张牌的视觉效果
-                const tileImg = tile.list[0];
-                if (tileImg && tileImg.setTint) {
-                    tileImg.setTint(0x90ee90);
-                }
-                if (tileImg) {
-                    tileImg.setOrigin(0.5);
-                    tileImg.setScale(tile.getData('baseImgScale') * 1.05);
-                }
-                tile.setDepth(2000);
-                const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
-                if (shadowEntry) {
-                    shadowEntry.shadow.setDepth(1999);
-                }
+                this.animateSelectTile(tile);
                 this.selectedTiles.push(tile);
 
-                this.time.delayedCall(300, () => {
+                // 清除两张牌的绿色选中效果
+                const clearGreen = (t) => {
+                    const img = t.list[0];
+                    if (img && img.clearTint) img.clearTint();
+                };
+                clearGreen(selectedTile);
+                clearGreen(tile);
+
+                // 碰撞消除动画，动画结束后执行消除逻辑
+                this.animateCollision(selectedTile, tile, () => {
                     selectedTile.setData('matched', true);
                     tile.setData('matched', true);
-                    selectedTile.setVisible(false);
-                    tile.setVisible(false);
-                    selectedTile.disableInteractive();
-                    tile.disableInteractive();
-
-                    // 消除对应的阴影
-                    [selectedTile, tile].forEach(t => {
-                        const se = this.shadowLayer.find(s => s.tile === t);
-                        if (se) {
-                            se.shadow.setVisible(false);
-                        }
-                    });
 
                     if (this.hintTiles.includes(selectedTile) || this.hintTiles.includes(tile)) {
                         this.clearHint();
@@ -790,9 +965,6 @@ class GameScene extends Phaser.Scene {
                             });
                         }
                     });
-
-                    this.clearTileSelection(selectedTile);
-                    this.clearTileSelection(tile);
 
                     this.matchedPairs++;
                     this.score += 200;
@@ -817,67 +989,23 @@ class GameScene extends Phaser.Scene {
                 });
             } else {
                 // 类型不同 → 取消前一张，选中新牌
-                this.clearTileSelection(selectedTile);
+                this.animateDeselectTile(selectedTile);
                 this.selectedTiles = [];
 
                 // 选中新牌
-                const tileImg = tile.list[0];
-                if (tileImg && tileImg.setTint) {
-                    tileImg.setTint(0x90ee90);
-                }
-                if (tileImg) {
-                    tileImg.setOrigin(0.5);
-                    tileImg.setScale(tile.getData('baseImgScale') * 1.05);
-                }
-                tile.setDepth(2000);
-                const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
-                if (shadowEntry) {
-                    shadowEntry.shadow.setDepth(1999);
-                }
+                this.animateSelectTile(tile);
                 this.selectedTiles.push(tile);
             }
             return;
         }
 
         // 没有选中牌 → 选中这张
-        const tileImg = tile.list[0];
-        if (tileImg && tileImg.setTint) {
-            tileImg.setTint(0x90ee90);
-        }
-        if (tileImg) {
-            tileImg.setOrigin(0.5);
-            tileImg.setScale(tile.getData('baseImgScale') * 1.05);
-        }
-        tile.setDepth(2000);
-        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
-        if (shadowEntry) {
-            shadowEntry.shadow.setDepth(1999);
-        }
+        this.animateSelectTile(tile);
         this.selectedTiles.push(tile);
     }
 
     clearTileSelection(tile) {
-        const tileImg = tile.list[0];
-        if (tileImg) {
-            tileImg.setOrigin(0.5);
-            tileImg.setScale(tile.getData('imgScale'));
-            // 恢复 tint：锁定牌灰色，提示牌黄色，自由牌清除
-            if (!tile.getData('isFree')) {
-                tileImg.setTint(0x999999);
-            } else if (tile.getData('hintTint')) {
-                tileImg.setTint(0xf1c40f);
-            } else {
-                tileImg.clearTint();
-            }
-        }
-        tile.setDepth(tile.getData('defaultDepth'));
-
-        // 阴影恢复该层的阴影层
-        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
-        if (shadowEntry) {
-            const layer = tile.getData('layer');
-            shadowEntry.shadow.setDepth(layer === 0 ? -1 : 999);
-        }
+        this.animateDeselectTile(tile);
     }
 
     resetTileState(tile) {
