@@ -38,6 +38,13 @@ class GameScene extends Phaser.Scene {
         this.load.image('tile_00', 'assets/pixelMajong/00.png');
         // 加载阴影素材
         this.load.image('tile_shadow', 'assets/pixelMajong/shadow.png');
+
+        // 加载音效
+        this.load.audio('sfx-click01', 'assets/wav/点击01.WAV');
+        this.load.audio('sfx-click02', 'assets/wav/点击02.WAV');
+        this.load.audio('sfx-click03', 'assets/wav/点击03.WAV');
+        this.load.audio('sfx-putdown', 'assets/wav/放下.WAV');
+        this.load.audio('sfx-collision', 'assets/wav/碰撞音效.WAV');
     }
 
     create() {
@@ -1395,7 +1402,8 @@ class GameScene extends Phaser.Scene {
                         if (seB) { seB.shadow.x = tileB.x; seB.shadow.y = tileB.y; }
                     },
                     onComplete: () => {
-                        // 阶段3：缩小消失（300ms，Sine.easeIn）
+                        // 阶段3：缩小消失（300ms，Sine.easeIn）+ 碰撞音效
+                        this.sound.play('sfx-collision');
                         this.tweens.add({
                             targets: [tileA],
                             scaleX: 0,
@@ -1446,6 +1454,9 @@ class GameScene extends Phaser.Scene {
         });
     }
     animateSelectTile(tile) {
+        // 随机播放点击音效（01~03）
+        this.sound.play(`sfx-click0${Math.floor(Math.random() * 3) + 1}`);
+
         const tileImg = tile.list[0];
         const isFaceDown = tile.getData('isFaceDown');
         const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
@@ -1548,6 +1559,9 @@ class GameScene extends Phaser.Scene {
 
     // 取消选中牌的动画效果（缓入缓出缩小）
     animateDeselectTile(tile) {
+        // 播放放下音效
+        this.sound.play('sfx-putdown');
+
         const tileImg = tile.list[0];
         const isFaceDown = tile.getData('isFaceDown');
         const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
