@@ -253,12 +253,30 @@ class GameScene extends Phaser.Scene {
         }
 
         pair.forEach(tile => {
-            // 暗扣牌被提示时，永久翻正为正面
+            // 暗扣牌被提示时，永久翻正为正面（带动画）
             if (tile.getData('isFaceDown')) {
                 tile.setData('isFaceDown', false);
                 const tileImg = tile.list[0];
-                if (tileImg && tileImg.setTexture) {
-                    tileImg.setTexture(`tile_${tile.getData('type') % 34}`);
+                if (tileImg) {
+                    const faceTexture = `tile_${tile.getData('type') % 34}`;
+                    const baseScale = tile.getData('imgScale');
+
+                    // 水平缩小到0 → 换正面图 → 水平放大回原始大小
+                    this.tweens.add({
+                        targets: tileImg,
+                        scaleX: 0,
+                        duration: 120,
+                        ease: 'Sine.easeIn',
+                        onComplete: () => {
+                            tileImg.setTexture(faceTexture);
+                            this.tweens.add({
+                                targets: tileImg,
+                                scaleX: baseScale,
+                                duration: 120,
+                                ease: 'Sine.easeOut'
+                            });
+                        }
+                    });
                 }
             }
 
