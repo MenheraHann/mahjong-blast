@@ -55,18 +55,5 @@ class HomeScene extends Phaser.Scene {
             });
         }
 
-        // 定制关卡按钮
-        const editorBtn = this.add.text(w / 2, h * 0.76, '定制关卡', {
-            fontSize: '28px',
-            color: '#ffffff',
-            backgroundColor: '#8e44ad',
-            padding: { x: 50, y: 22 }
-        }).setOrigin(0.5);
-
-        editorBtn.setInteractive({ useHandCursor: true });
-        editorBtn.on('pointerdown', () => {
-            this.sound.play('sfx-button');
-            this.scene.start('EditorScene');
-        });
     }
 }

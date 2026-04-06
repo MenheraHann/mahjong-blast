@@ -15,7 +15,11 @@ class GameScene extends Phaser.Scene {
         this.hintCount = 10;
         this.shuffleCount = 10;
         this.hintTiles = [];
-        this.boardGrid = []; // 7x8 网格，存储每格的牌信息
+        this.boardGrid = []; // 12×14 交点网格，存储每交点各层牌引用 [layer0, layer1, layer2, layer3]
+        // 连击相关
+        this.combo = 0;
+        this.maxCombo = 0;
+        this.startTime = Date.now();
     }
 
     preload() {
@@ -25,19 +29,23 @@ class GameScene extends Phaser.Scene {
         this.load.svg('icon-hint', 'assets/icons/hint.svg');
 
         // 加载pixelMajong麻将牌图片
-        // 一万到九万 01~09, 一饼到九饼 11~19, 一条到九条 31~39, 北西南东发中白板 41~47
-        const tileFiles = [];
-        for (let i = 1; i <= 9; i++) tileFiles.push(i);        // 万 01-09
-        for (let i = 11; i <= 19; i++) tileFiles.push(i);      // 饼 11-19
-        for (let i = 31; i <= 39; i++) tileFiles.push(i);      // 条 31-39
-        for (let i = 41; i <= 47; i++) tileFiles.push(i);      // 字 41-47
-        tileFiles.forEach((num, idx) => {
+        // 加载34种麻将牌（tile_0~tile_33）
+        // tile_0~8: 万(1-9), tile_9~17: 饼(11-19), tile_18~26: 条(31-39), tile_27~33: 字(41-47)
+        const tileMap = [
+            1,2,3,4,5,6,7,8,9,       // tile_0~8: 万
+            11,12,13,14,15,16,17,18,19,  // tile_9~17: 饼
+            31,32,33,34,35,36,37,38,39,  // tile_18~26: 条
+            41,42,43,44,45,46,47        // tile_27~33: 字
+        ];
+        tileMap.forEach((num, idx) => {
             this.load.image(`tile_${idx}`, `assets/pixelMajong/${String(num).padStart(2, '0')}.png`);
         });
         // 加载暗扣牌背
         this.load.image('tile_00', 'assets/pixelMajong/00.png');
         // 加载阴影素材
         this.load.image('tile_shadow', 'assets/pixelMajong/shadow.png');
+        // 加载锁定提示图标
+        this.load.image('red_cross', 'assets/icons/red_cross.png');
 
         // 加载音效
         this.load.audio('sfx-click01', 'assets/wav/点击01.WAV');
@@ -48,6 +56,7 @@ class GameScene extends Phaser.Scene {
         this.load.audio('sfx-hint', 'assets/wav/提示.WAV');
         this.load.audio('sfx-shuffle', 'assets/wav/重新排列.WAV');
         this.load.audio('sfx-start', 'assets/wav/开局音效.WAV');
+        this.load.audio('sfx-levelComplete', 'assets/wav/过关.WAV');
         this.load.audio('sfx-button', 'assets/wav/按钮点击.WAV');
     }
 
@@ -69,6 +78,12 @@ class GameScene extends Phaser.Scene {
 
         // 创建底部功能栏
         this.createBottomBar();
+
+        // 临时调试网格辅助线（按D键开关）
+        this.debugGridGraphics = null;
+        this.input.keyboard.on('keydown-D', () => {
+            this.toggleDebugGrid();
+        });
     }
 
     createTopBar() {
@@ -149,24 +164,24 @@ class GameScene extends Phaser.Scene {
 
     showConfirmDialog(message, onConfirm) {
         const overlay = this.add.rectangle(this.w / 2, this.h / 2, this.w, this.h, 0x000000, 0.5)
-            .setInteractive().setDepth(5000);
+            .setInteractive().setDepth(6000);
 
         const dialogBg = this.add.rectangle(this.w / 2, this.h / 2 - 40, 400, 200, 0x2c3e50)
-            .setStrokeStyle(2, 0x7f8c8d).setDepth(5001);
+            .setStrokeStyle(2, 0x7f8c8d).setDepth(6001);
 
         const msgText = this.add.text(this.w / 2, this.h / 2 - 90, message, {
             fontSize: '22px',
             color: '#ecf0f1',
             wordWrap: { width: 350 },
             align: 'center'
-        }).setOrigin(0.5).setDepth(5001);
+        }).setOrigin(0.5).setDepth(6001);
 
         const confirmBtn = this.add.text(this.w / 2 - 80, this.h / 2, '确定', {
             fontSize: '22px',
             color: '#ffffff',
             backgroundColor: '#e74c3c',
             padding: { x: 25, y: 10 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
 
         confirmBtn.on('pointerdown', () => {
             this.sound.play('sfx-button');
@@ -179,7 +194,7 @@ class GameScene extends Phaser.Scene {
             color: '#ffffff',
             backgroundColor: '#3498db',
             padding: { x: 25, y: 10 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
 
         cancelBtn.on('pointerdown', () => {
             this.sound.play('sfx-button');
@@ -189,23 +204,23 @@ class GameScene extends Phaser.Scene {
 
     showMenu() {
         const overlay = this.add.rectangle(this.w / 2, this.h / 2, this.w, this.h, 0x000000, 0.5)
-            .setInteractive().setDepth(5000);
+            .setInteractive().setDepth(6000);
 
         const dialogBg = this.add.rectangle(this.w / 2, this.h / 2, 350, 250, 0x2c3e50)
-            .setStrokeStyle(2, 0x7f8c8d).setDepth(5001);
+            .setStrokeStyle(2, 0x7f8c8d).setDepth(6001);
 
         const title = this.add.text(this.w / 2, this.h / 2 - 90, '菜单', {
             fontSize: '28px',
             color: '#ecf0f1',
             fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(5001);
+        }).setOrigin(0.5).setDepth(6001);
 
         const restartBtn = this.add.text(this.w / 2, this.h / 2 - 20, '重新开始', {
             fontSize: '24px',
             color: '#ffffff',
             backgroundColor: '#e67e22',
             padding: { x: 40, y: 12 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
 
         restartBtn.on('pointerdown', () => {
             this.sound.play('sfx-button');
@@ -218,7 +233,7 @@ class GameScene extends Phaser.Scene {
             color: '#ffffff',
             backgroundColor: '#3498db',
             padding: { x: 40, y: 12 }
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
 
         menuBtn2.on('pointerdown', () => {
             this.sound.play('sfx-button');
@@ -268,6 +283,9 @@ class GameScene extends Phaser.Scene {
     useHint() {
         if (this.hintCount <= 0) return;
         if (this.hintTiles.length > 0) return;
+
+        // 使用提示打断连击
+        this.combo = 0;
 
         // 播放提示音效
         this.sound.play('sfx-hint');
@@ -563,6 +581,7 @@ class GameScene extends Phaser.Scene {
         });
     }
 
+    // 洗牌
     shuffleBoard() {
         if (this.shuffleCount <= 0) return;
         this.shuffleCount--;
@@ -572,149 +591,134 @@ class GameScene extends Phaser.Scene {
             this.shuffleBtn.disableInteractive();
         }
 
+        // 手动刷新打断连击
+        this.combo = 0;
+
+        // 保存未消除的牌的引用（动画会移动它们，但引用不变）
         const unmatchedTiles = this.tiles.filter(t => !t.getData('matched'));
         this.clearHint();
 
         this.animateShuffleBoard(() => {
-            const types = this.getShuffledTypesForLayer2(unmatchedTiles);
-            unmatchedTiles.forEach((tile, i) => {
-                const newType = types[i];
-                tile.setData('type', newType);
-                const tileImg = tile.list[0];
-                if (tileImg && tileImg.setTexture) {
-                    tileImg.setTexture(`tile_${newType % 34}`);
+            // 收集所有未消除牌的当前牌面类型
+            const types = unmatchedTiles.map(t => t.getData('type'));
+
+            // 最多50次尝试，找到洗牌后有至少一对可配对的结果
+            let bestTypes = null;
+            for (let attempt = 0; attempt < 50; attempt++) {
+                // 打乱牌面类型顺序
+                const shuffled = [...types];
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
                 }
-                tile.setData('hintTint', false);
-                this.clearTileSelection(tile);
+
+                // 临时分配测试
+                unmatchedTiles.forEach((tile, i) => {
+                    tile.setData('type', shuffled[i]);
+                });
+                this.recalculateAllFreeStatus();
+
+                // 检查是否有至少一对可配对
+                if (this.hasFreePairs()) {
+                    bestTypes = shuffled;
+                    break;
+                }
+            }
+
+            // 如果50次都没找到可用配对，重新生成牌面类型（维持数量）
+            if (!bestTypes) {
+                this.doSmartShuffleLogic();
+                return;
+            }
+
+            // 最终应用最佳洗牌结果
+            bestTypes.forEach((type, i) => {
+                unmatchedTiles[i].setData('type', type);
+                const tileImg = unmatchedTiles[i].list[0];
+                if (tileImg && tileImg.setTexture && !unmatchedTiles[i].getData('isFaceDown')) {
+                    tileImg.setTexture(`tile_${type % 34}`);
+                }
+                unmatchedTiles[i].setData('hintTint', false);
+                this.clearTileSelection(unmatchedTiles[i]);
             });
             this.recalculateAllFreeStatus();
-
-            // 洗牌后检查是否还有自由配对，没有则直接执行逻辑（不嵌套动画）
-            if (!this.hasFreePairs()) {
-                this.doSmartShuffleLogic();
-            }
         });
     }
 
-    // 生成第二层牌的布局（基于第一层牌的几何接触关系）
-    generateLayer2() {
-        const cols = 7;
-        const rows = 8;
-        const corners = [[0,0],[0,6],[7,0],[7,6]];
-        const cornerKey = (r,c) => `${r},${c}`;
-        const cornerSet = new Set(corners.map(([r,c]) => cornerKey(r,c)));
-
+    // 生成指定层的牌布局（基于 14×16 交点网格 + 支撑规则 + 互斥区）
+    generateLayerN(layerIndex) {
         const tryPlacement = () => {
-            // Step 1: 扫描所有候选放置位置
-            const candidates = [];
-
-            // 正压：每个第一层牌位置的正上方
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    candidates.push({
-                        type: 'single',
-                        coverage: [[r, c]],
-                        renderRow: r,
-                        renderCol: c
-                    });
+            // Step 1: 计算下层所有牌的 3×3 互斥区域并集（= 支撑点集合）
+            const lowerLayer = layerIndex - 1;
+            const lowerLayerTiles = this.tiles.filter(t => t.getData('layer') === lowerLayer);
+            const supportPoints = new Set();
+            lowerLayerTiles.forEach(tile => {
+                const tr = tile.getData('tileRow');
+                const tc = tile.getData('tileCol');
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const rr = tr + dr;
+                        const cc = tc + dc;
+                        if (rr >= 0 && rr <= 13 && cc >= 0 && cc <= 11) {
+                            supportPoints.add(`${rr},${cc}`);
+                        }
+                    }
                 }
-            }
-
-            // 边压：水平相邻
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols - 1; c++) {
-                    candidates.push({
-                        type: 'edge',
-                        coverage: [[r, c], [r, c + 1]],
-                        renderRow: r,
-                        renderCol: c + 0.5
-                    });
-                }
-            }
-
-            // 边压：垂直相邻
-            for (let r = 0; r < rows - 1; r++) {
-                for (let c = 0; c < cols; c++) {
-                    candidates.push({
-                        type: 'edge',
-                        coverage: [[r, c], [r + 1, c]],
-                        renderRow: r + 0.5,
-                        renderCol: c
-                    });
-                }
-            }
-
-            // 角压：左上到右下对角（2×2网格，4个位置全部纳入coverage，过滤由后续步骤处理）
-            for (let r = 0; r < rows - 1; r++) {
-                for (let c = 0; c < cols - 1; c++) {
-                    const positions = [[r, c], [r, c + 1], [r + 1, c], [r + 1, c + 1]];
-                    candidates.push({
-                        type: 'corner',
-                        coverage: positions,
-                        renderRow: r + 0.5,
-                        renderCol: c + 0.5
-                    });
-                }
-            }
-
-            // 角压：右上到左下对角（2×2网格，4个位置全部纳入coverage）
-            for (let r = 0; r < rows - 1; r++) {
-                for (let c = 1; c < cols; c++) {
-                    const positions = [[r, c - 1], [r, c], [r + 1, c - 1], [r + 1, c]];
-                    candidates.push({
-                        type: 'corner',
-                        coverage: positions,
-                        renderRow: r + 0.5,
-                        renderCol: c - 0.5
-                    });
-                }
-            }
-
-            // Step 2: 过滤 — 移除覆盖角位的候选，移除coverage不足2个的角压候选
-            const filtered = candidates.filter(cand => {
-                // 不能覆盖四角
-                if (cand.coverage.some(([r,c]) => cornerSet.has(cornerKey(r,c)))) return false;
-                // 角压候选必须覆盖至少2个位置（过滤掉因四角过滤后只剩1个的情况）
-                if (cand.type === 'corner' && cand.coverage.length < 2) return false;
-                return true;
             });
 
-            // 打乱候选顺序
-            for (let i = filtered.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+            // Step 2: 收集所有有效候选位置（有支撑点 + 不与自身 3×3 互斥区冲突）
+            const candidates = [];
+            for (let r = 0; r <= 13; r++) {
+                for (let c = 0; c <= 11; c++) {
+                    if (!supportPoints.has(`${r},${c}`)) continue;
+                    candidates.push({ row: r, col: c });
+                }
             }
 
-            // Step 3: 贪心选择 8-12 个不重叠的候选
+            // 打乱候选顺序
+            for (let i = candidates.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+            }
+
+            // Step 3: 贪心选择 8-12 个不重叠 3×3 互斥区的候选
             const targetCount = 8 + Math.floor(Math.random() * 5); // 8-12
-            const usedPositions = new Set();
+            const usedPoints = new Set();
             const placed = [];
 
-            for (const cand of filtered) {
+            for (const cand of candidates) {
                 if (placed.length >= targetCount) break;
 
-                // 检查是否与已选候选有 coverage 重叠
-                const hasOverlap = cand.coverage.some(([r,c]) => usedPositions.has(cornerKey(r,c)));
-                if (hasOverlap) continue;
+                // 检查该牌的 3×3 互斥区是否与已放置牌的互斥区冲突
+                let conflict = false;
+                for (let dr = -1; dr <= 1 && !conflict; dr++) {
+                    for (let dc = -1; dc <= 1 && !conflict; dc++) {
+                        if (usedPoints.has(`${cand.row + dr},${cand.col + dc}`)) {
+                            conflict = true;
+                        }
+                    }
+                }
+                if (conflict) continue;
 
-                // 标记已使用位置
-                cand.coverage.forEach(([r,c]) => usedPositions.add(cornerKey(r,c)));
+                // 标记该牌的 3×3 互斥区
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        usedPoints.add(`${cand.row + dr},${cand.col + dc}`);
+                    }
+                }
                 placed.push({
-                    coverage: cand.coverage,
-                    renderRow: cand.renderRow,
-                    renderCol: cand.renderCol
+                    row: cand.row,
+                    col: cand.col
                 });
             }
 
-            // Step 4: 检查至少20个位置未被覆盖
-            let uncovered = rows * cols;
-            usedPositions.forEach(() => uncovered--);
-            if (uncovered < 20) return null;
+            // Step 4: 至少需要放置 2 张（1 对）
+            if (placed.length < 2) return null;
 
             return placed;
         };
 
-        // 最多重试3次
+        // 最多重试 3 次
         for (let retry = 0; retry < 3; retry++) {
             const result = tryPlacement();
             if (result) return result;
@@ -728,74 +732,89 @@ class GameScene extends Phaser.Scene {
 
         const layer = tile.getData('layer');
 
-        // 如果被上层牌覆盖（压边、正压、压角），则锁定
-        if (layer === 0 && tile.getData('isCovered')) return false;
+        // 如果被上层牌覆盖（压边、正压、压角），则锁定（任何层都适用）
+        if (tile.getData('isCovered')) return false;
 
-        // 第二层及以上牌始终自由（除非被匹配）
-        if (layer >= 1) return true;
-
-        // 第一层改为按真实牌位置判断左右是否被挡住，兼容 .5 位置
+        // 同层左右都被挡住 → 锁定
         const leftBlocked = this.hasSideNeighbor(tile, 'left');
         const rightBlocked = this.hasSideNeighbor(tile, 'right');
         return !(leftBlocked && rightBlocked);
     }
 
-    // 检查同层是否有牌挡住左右侧，按真实位置判断，兼容 .5 坐标
+    // 检查是否有牌挡住左右侧，基于网格坐标（同层内检查）
+    // 左侧3个点：(r-1,c-2)、(r,c-2)、(r+1,c-2)
+    // 右侧3个点：(r-1,c+2)、(r,c+2)、(r+1,c+2)
     hasSideNeighbor(tile, side) {
         const layer = tile.getData('layer');
-        const tileW = tile.getData('tileW');
-        const tileH = tile.getData('tileH');
-        const halfW = tileW / 2;
-        const verticalTolerance = tileH * 0.45;
-        const maxGap = tileW * 0.9;
+        const row = tile.getData('tileRow');
+        const col = tile.getData('tileCol');
 
         return this.tiles.some(other => {
             if (other === tile) return false;
             if (other.getData('matched')) return false;
             if (other.getData('layer') !== layer) return false;
 
-            const dx = other.x - tile.x;
-            const dy = Math.abs(other.y - tile.y);
-            if (dy > verticalTolerance) return false;
+            const otherRow = other.getData('tileRow');
+            const otherCol = other.getData('tileCol');
 
             if (side === 'left') {
-                return dx < 0 && Math.abs(dx) <= maxGap && Math.abs(dx) >= halfW * 0.35;
+                return col - otherCol === 2 &&
+                       Math.abs(row - otherRow) <= 1;
+            } else { // 'right'
+                return otherCol - col === 2 &&
+                       Math.abs(row - otherRow) <= 1;
             }
-            return dx > 0 && dx <= maxGap && dx >= halfW * 0.35;
         });
     }
 
-    // 根据真实位置刷新第一层牌的覆盖状态，兼容 .5 位置
+    // 根据位置坐标判断覆盖关系（基于 14×16 交点网格的 3×3 互斥区）
+    // 上层牌覆盖下层牌：下层牌中心在上层牌的 3×3 互斥区域内
     refreshCoveredState() {
-        const lowerTiles = this.tiles.filter(t => !t.getData('matched') && t.getData('layer') === 0);
-        const upperTiles = this.tiles.filter(t => !t.getData('matched') && t.getData('layer') > 0);
+        const allTiles = this.tiles.filter(t => !t.getData('matched'));
 
-        lowerTiles.forEach(lower => {
-            const lowerW = lower.getData('tileW');
-            const lowerH = lower.getData('tileH');
-            const covered = upperTiles.some(upper => {
-                const upperW = upper.getData('tileW');
-                const upperH = upper.getData('tileH');
-                const overlapX = Math.abs(upper.x - lower.x) < (lowerW + upperW) / 2 - 6;
-                const overlapY = Math.abs(upper.y - lower.y) < (lowerH + upperH) / 2 - 6;
-                return overlapX && overlapY;
-            });
-            lower.setData('isCovered', covered);
+        // 先重置所有牌的 isCovered
+        allTiles.forEach(t => t.setData('isCovered', false));
+
+        // 对每张上层牌，找到其 3×3 互斥区域内下层的牌
+        const upperTiles = allTiles.filter(t => t.getData('layer') > 0);
+
+        upperTiles.forEach(upper => {
+            const upperLayer = upper.getData('layer');
+            const uRow = upper.getData('tileRow');
+            const uCol = upper.getData('tileCol');
+            if (uRow === undefined || uCol === undefined) return;
+
+            // 在该牌的 3×3 互斥区内，找到下层的牌
+            // 注意：t.row/t.col 可能是 .5 值，需要取整后比较
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    const rr = Math.round(uRow) + dr;
+                    const cc = Math.round(uCol) + dc;
+                    const lower = allTiles.find(t =>
+                        t.getData('layer') === upperLayer - 1 &&
+                        Math.round(t.getData('tileRow')) === rr &&
+                        Math.round(t.getData('tileCol')) === cc
+                    );
+                    if (lower) {
+                        lower.setData('isCovered', true);
+                    }
+                }
+            }
         });
     }
 
-    // 检查指定网格位置在指定层是否有未消除的牌
+    // 检查指定交点位置在指定层是否有未消除的牌
     hasTileAt(row, col, layer) {
-        if (row < 0 || row > 7 || col < 0 || col > 6) return false;
+        const gridRow = Math.round(row);
+        const gridCol = Math.round(col);
+        if (gridRow < 0 || gridRow > 13 || gridCol < 0 || gridCol > 11) return false;
+        if (layer < 0 || layer > 3) return false;
 
-        const cell = this.boardGrid[row][col];
+        const cell = this.boardGrid[gridRow][gridCol];
         if (!cell) return false;
 
-        if (layer === 0) {
-            return cell.layer1Tile && !cell.layer1Tile.getData('matched');
-        } else {
-            return cell.layer2Tile && !cell.layer2Tile.getData('matched');
-        }
+        const tile = cell[layer];
+        return tile && !tile.getData('matched');
     }
 
     // 重新计算所有牌的自由状态
@@ -838,10 +857,10 @@ class GameScene extends Phaser.Scene {
         this.matchText.setText(`${this.remainingPairs}`);
     }
 
-    // 牌面整体居中
+    // 牌面整体居中 —— 14×16 交点网格坐标系
     createBoard() {
-        const cols = 7;
-        const rows = 8;
+        const gridCols = 12; // 交点列数
+        const gridRows = 14; // 交点行数
         const topBarH = 90;
         const bottomBarH = 90;
         const padding = 15;
@@ -851,30 +870,39 @@ class GameScene extends Phaser.Scene {
         const availH = this.h - topBarH - bottomBarH - padding * 2;
         const tileRatio = 51 / 76; // 宽/高
 
-        // 动态计算牌尺寸，保持51:76比例
-        const tileByW = availW / cols;
-        const tileByH = (availH / rows) / tileRatio;
+        // 动态计算牌尺寸：牌占据 3×3 互斥区域时覆盖 2 个交点间距
+        // 相邻交点的像素距离 = 牌宽 / 2
+        // 底层牌占偶数行偶数列，共 6 列(7行)的有效占用区
+        // 有效区域 = (gridCols - 1) / 2 * tileSize（偶数列 × 牌宽）
+        // 有效区域 = (gridRows - 1) / 2 * tileHeight（偶数行 × 牌高）
+        const effCols = (gridCols) / 2; // 6 列底层牌列数
+        const effRows = (gridRows) / 2; // 7 行底层牌行数
+        const tileByW = availW / effCols;
+        const tileByH = (availH / effRows) / tileRatio;
         const rawSize = Math.floor(Math.min(tileByW, tileByH));
-        const tileSize = Math.floor(rawSize * 0.9);
-        const tileHeight = Math.round(tileSize / tileRatio);
-        const gap = 0;
+        const tileSize = 54; // 固定牌宽（放大15%）
+        const tileHeight = 79; // 固定牌高（放大15%）
 
         // 牌面整体居中
-        const actualBoardW = cols * tileSize + (cols - 1) * (-10);
-        const actualBoardH = rows * tileHeight + (rows - 1) * (-20);
-        const startX = (this.w - actualBoardW) / 2 + tileSize / 2;
-        const startY = topBarH + (this.h - topBarH - bottomBarH) / 2 - actualBoardH / 2 + tileHeight / 2;
+        // 底层偶数列跨度 = 10 * stepX（col 0 到 col 10，6列偶数）
+        // 底层偶数行跨度 = 12 * stepY（row 0 到 row 12，7行偶数）
+        const stepX = 48; // 横向间距42px（放大15%）
+        const stepY = 68; // 纵向间距59px（放大15%）
+        const boardW = 10 * stepX; // 牌面实际跨度
+        const boardH = 12 * stepY;
+        const startX = (this.w - boardW) / 2;
+        const startY = topBarH + (this.h - topBarH - bottomBarH) / 2 - boardH / 2;
 
         this.tiles = [];
         this.shadowLayer = []; // 独立的阴影层
 
-        // 初始化7x8网格
-        this.boardGrid = Array.from({length: rows}, () =>
-            Array.from({length: cols}, () => ({ layer1Tile: null, layer2Tile: null }))
+        // 初始化12×14交点网格，每个交点存 [layer0, layer1, layer2, layer3]
+        this.boardGrid = Array.from({length: gridRows}, () =>
+            Array.from({length: gridCols}, () => [null, null, null, null])
         );
 
         // 存储计算参数供后续使用
-        this.boardParams = { cols, rows, tileSize, tileHeight, startX, startY };
+        this.boardParams = { gridCols, gridRows, tileSize, tileHeight, startX, startY, stepX, stepY, effCols, effRows };
 
         // 检查是否有定制关卡配置
         const levelConfig = this.loadLevelConfig(this.currentLevel);
@@ -887,20 +915,23 @@ class GameScene extends Phaser.Scene {
 
     // 加载定制关卡配置
     loadLevelConfig(level) {
+        // 优先从 localStorage 加载（自定义关卡）
         const key = `mahjongLevel_${level}`;
         const saved = localStorage.getItem(key);
-        if (!saved) return null;
-        try {
-            return JSON.parse(saved);
-        } catch (e) {
-            console.error('[游戏] 加载关卡配置失败:', e);
-            return null;
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {
+                console.error('[游戏] 加载自定义关卡配置失败:', e);
+            }
         }
+        // 回退到预设关卡文件（通过 fetch 加载）
+        return window.LEVELS ? window.LEVELS[level] || null : null;
     }
 
-    // 根据定制配置生成关卡布局（支持正格/边位/角位）
+    // 根据定制配置生成关卡布局（基于 14×16 交点网格）
     generateLevelLayout(config) {
-        const { tileSize, tileHeight, startX, startY } = this.boardParams;
+        const { tileSize, tileHeight, startX, startY, stepX, stepY } = this.boardParams;
         const tiles = config.tiles || [];
 
         // 为所有位置生成成对的牌面值
@@ -918,7 +949,7 @@ class GameScene extends Phaser.Scene {
 
         let tileIdx = 0;
         const layerOffsetX = -10;
-        const layerOffsetY = -12;
+        const layerOffsetY = -10;
 
         const maxLayer = Math.max(...tiles.map(t => t.layer), 0);
         for (let layer = 0; layer <= maxLayer; layer++) {
@@ -929,14 +960,17 @@ class GameScene extends Phaser.Scene {
 
             layerTiles.forEach(t => {
                 const type = types[tileIdx % types.length];
-                const x = startX + t.col * (tileSize - 10) + layer * layerOffsetX;
-                const y = startY + t.row * (tileHeight - 20) + layer * layerOffsetY;
+                // 坐标 = 交点坐标 × 步长 + 层偏移
+                const x = startX + t.col * stepX + layer * layerOffsetX;
+                const y = startY + t.row * stepY + layer * layerOffsetY;
 
                 const container = this.add.container(x, y);
                 const imgKey = `tile_${type % 34}`;
                 const tileImg = this.add.image(0, 0, imgKey);
-                const imgScale = Math.min((tileSize - 2) / 100, (tileHeight - 2) / 138);
+                const imgScale = Math.min(tileSize / 51, tileHeight / 76);
                 tileImg.setScale(imgScale);
+                const imgW = 51 * imgScale;
+                const imgH = 76 * imgScale;
 
                 if (t.faceDown) {
                     tileImg.setTexture('tile_00');
@@ -949,38 +983,47 @@ class GameScene extends Phaser.Scene {
                 container.setData('tileH', tileHeight);
                 container.setData('imgScale', imgScale);
                 container.setData('layer', layer);
-                container.setData('coveredPositions', [[t.row, t.col]]);
+                // 存储该牌覆盖的下层牌位置（Layer 0 不覆盖任何下层，为空）
+                // covered 用整数索引（用于 boardGrid 查找）
+                const covered = [];
+                if (layer > 0) {
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const rr = Math.round(t.row) + dr;
+                            const cc = Math.round(t.col) + dc;
+                            if (rr >= 0 && rr <= 13 && cc >= 0 && cc <= 11) {
+                                covered.push([rr, cc]);
+                            }
+                        }
+                    }
+                }
+                container.setData('coveredPositions', covered);
+                container.setData('tileRow', t.row);
+                container.setData('tileCol', t.col);
                 container.setData('isCovered', false);
                 container.setData('isFree', true);
                 container.setData('baseImgScale', imgScale);
                 container.setData('isFaceDown', t.faceDown || false);
-                container.setSize(tileSize, tileHeight);
-                container.setInteractive({ useHandCursor: true });
+                container.setInteractive(new Phaser.Geom.Rectangle(-25.5 * imgScale * 2, -38 * imgScale * 2, 51 * imgScale * 2, 76 * imgScale * 2), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
                 container.on('pointerdown', () => this.onTileClick(container));
 
                 // 深度规则：右压左、下压上
-                // 公式：depth = layer * 10000 + (row + col) * 100
-                // 同层内 row + col 越大（越右、越下）depth 越高
-                // row和col权重相等，保证：右邻牌压左、下邻牌压上、右下角压所有
-                const defaultDepth = layer * 10000 + (Math.round(t.row * 10) + Math.round(t.col * 10)) * 100;
+                const defaultDepth = layer * 1000 + (t.row + t.col) * 10;
                 container.setDepth(defaultDepth);
                 container.setData('defaultDepth', defaultDepth);
 
                 this.tiles.push(container);
 
-                const rowIsInt = Number.isInteger(t.row);
-                const colIsInt = Number.isInteger(t.col);
-                if (rowIsInt && colIsInt) {
-                    if (layer === 0) {
-                        this.boardGrid[t.row][t.col].layer1Tile = container;
-                    } else if (layer === 1) {
-                        this.boardGrid[t.row][t.col].layer2Tile = container;
-                    }
+                // 注册到 boardGrid（将 .5 坐标转为整数索引）
+                const gridRow = Math.round(t.row);
+                const gridCol = Math.round(t.col);
+                if (layer >= 0 && layer <= 3 && gridRow >= 0 && gridRow <= 13 && gridCol >= 0 && gridCol <= 11) {
+                    this.boardGrid[gridRow][gridCol][layer] = container;
                 }
 
                 const shadowImg = this.add.image(x, y, 'tile_shadow');
                 shadowImg.setScale(imgScale);
-                shadowImg.setDepth(layer === 0 ? -1 : 999);
+                shadowImg.setDepth(layer * 1000 - 500);
                 shadowImg.setData('origScale', imgScale);
                 this.shadowLayer.push({ shadow: shadowImg, tile: container });
 
@@ -1000,17 +1043,22 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    // 生成自定义关卡布局
-    // 生成随机关卡布局（原有逻辑）
+    // 生成随机关卡布局（基于 12×14 交点网格，底层牌在偶数×偶数交点）
     generateRandomLayout() {
-        const { cols, rows, tileSize, tileHeight, startX, startY } = this.boardParams;
+        const { tileSize, tileHeight, startX, startY, stepX, stepY } = this.boardParams;
 
-        const totalTiles = rows * cols;
+        // Layer 0 底层牌：偶数行(0,2,...,12) × 偶数列(0,2,...,10)，共 7×6=42 个位置
+        const layer0Positions = [];
+        for (let r = 0; r <= 12; r += 2) {
+            for (let c = 0; c <= 10; c += 2) {
+                layer0Positions.push([r, c]);
+            }
+        }
+        const totalTiles = layer0Positions.length; // 42
 
         // 第一层牌类型：先生成，保证偶数对（类型范围0-33，共34种牌）
-        const layer1Count = totalTiles; // 56张
         const layer1Types = [];
-        for (let i = 0; i < layer1Count / 2; i++) {
+        for (let i = 0; i < totalTiles / 2; i++) {
             const type = i % 34; // 0-33循环
             layer1Types.push(type, type);
         }
@@ -1020,22 +1068,98 @@ class GameScene extends Phaser.Scene {
             [layer1Types[i], layer1Types[j]] = [layer1Types[j], layer1Types[i]];
         }
 
-        for (let row = 0; row < rows; row++) {
-            for (let col = 0; col < cols; col++) {
-                const idx = row * cols + col;
-                if (idx >= layer1Types.length) continue;
+        layer0Positions.forEach((pos, idx) => {
+            const [row, col] = pos;
+            if (idx >= layer1Types.length) return;
 
-                const type = layer1Types[idx];
-                const x = startX + col * (tileSize - 10);
-                const y = startY + row * (tileHeight - 20);
+            const type = layer1Types[idx];
+            // 坐标 = 交点坐标 × 步长
+            const x = startX + col * stepX;
+            const y = startY + row * stepY;
+
+            const container = this.add.container(x, y);
+
+            // 麻将牌图片，等比缩放
+            const imgKey = `tile_${type % 34}`;
+            const tileImg = this.add.image(0, 0, imgKey);
+            const imgScale = Math.min(tileSize / 51, tileHeight / 76);
+            tileImg.setScale(imgScale);
+            const imgW = 51 * imgScale;
+            const imgH = 76 * imgScale;
+            container.add(tileImg);
+
+            container.setData('type', type);
+            container.setData('matched', false);
+            container.setData('tileW', tileSize);
+            container.setData('tileH', tileHeight);
+            container.setData('imgScale', imgScale);
+            container.setData('layer', 0);
+            container.setData('coveredPositions', []);
+            container.setData('tileRow', row);
+            container.setData('tileCol', col);
+            container.setData('isCovered', false);
+            container.setData('isFree', true);
+            container.setData('baseImgScale', imgScale);
+
+            // 暗扣标记（后续随机分配）
+            container.setData('isFaceDown', false);
+
+            container.setInteractive(new Phaser.Geom.Rectangle(-25.5 * imgScale * 2, -38 * imgScale * 2, 51 * imgScale * 2, 76 * imgScale * 2), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
+            container.on('pointerdown', () => this.onTileClick(container));
+
+            // 第一层：右压左、下压上
+            const defaultDepth = (row + col) * 10;
+            container.setDepth(defaultDepth);
+            container.setData('defaultDepth', defaultDepth);
+
+            this.tiles.push(container);
+            // 注册到 boardGrid
+            this.boardGrid[row][col][0] = container;
+
+            // 创建独立阴影（第一层阴影在depth -1，在所有第一层牌之下）
+            const shadowImg = this.add.image(x, y, 'tile_shadow');
+            const shadowScale = Math.min(tileSize / 51, tileHeight / 76);
+            shadowImg.setScale(shadowScale);
+            shadowImg.setDepth(-5000);
+            shadowImg.setData('origScale', shadowScale);
+            this.shadowLayer.push({ shadow: shadowImg, tile: container });
+        });
+
+        // 生成并渲染上层牌（Layer 1~3）
+        const maxLayer = 3;
+        for (let layerIndex = 1; layerIndex <= maxLayer; layerIndex++) {
+            const layerPlan = this.generateLayerN(layerIndex);
+            if (layerPlan.length === 0) continue;
+
+            // 生成该层牌面类型（偶数张）
+            const layerCount = layerPlan.length;
+            const layerTypes = [];
+            for (let i = 0; i < layerCount / 2; i++) {
+                const type = Math.floor(Math.random() * 34);
+                layerTypes.push(type, type);
+            }
+            if (layerCount % 2 !== 0) {
+                layerTypes.pop();
+            }
+
+            // 层间偏移
+            const layerOffsetX = -10;
+            const layerOffsetY = -10;
+
+            layerPlan.forEach((item, idx) => {
+                // 坐标 = 交点坐标 × 步长 + 层偏移
+                const x = startX + item.col * stepX + layerOffsetX;
+                const y = startY + item.row * stepY + layerOffsetY;
 
                 const container = this.add.container(x, y);
 
-                // 麻将牌图片，等比缩放
+                const type = layerTypes[idx];
                 const imgKey = `tile_${type % 34}`;
                 const tileImg = this.add.image(0, 0, imgKey);
-                const imgScale = Math.min((tileSize - 2) / 100, (tileHeight - 2) / 138);
+                const imgScale = Math.min(tileSize / 51, tileHeight / 76);
                 tileImg.setScale(imgScale);
+                const imgW = 51 * imgScale;
+                const imgH = 76 * imgScale;
                 container.add(tileImg);
 
                 container.setData('type', type);
@@ -1043,138 +1167,88 @@ class GameScene extends Phaser.Scene {
                 container.setData('tileW', tileSize);
                 container.setData('tileH', tileHeight);
                 container.setData('imgScale', imgScale);
-                container.setData('layer', 0);
-                container.setData('coveredPositions', [[row, col]]);
+                container.setData('layer', layerIndex);
+                // 存储牌覆盖的 3×3 互斥区内的下层牌
+                const covered = [];
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const rr = item.row + dr;
+                        const cc = item.col + dc;
+                        if (rr >= 0 && rr <= 13 && cc >= 0 && cc <= 11) {
+                            covered.push([rr, cc]);
+                        }
+                    }
+                }
+                container.setData('coveredPositions', covered);
+                container.setData('tileRow', item.row);
+                container.setData('tileCol', item.col);
                 container.setData('isCovered', false);
                 container.setData('isFree', true);
                 container.setData('baseImgScale', imgScale);
 
-                // 暗扣标记（后续随机分配）
-                container.setData('isFaceDown', false);
-
-                container.setSize(tileSize, tileHeight);
-                container.setInteractive({ useHandCursor: true });
+                container.setInteractive(new Phaser.Geom.Rectangle(-25.5 * imgScale * 2, -38 * imgScale * 2, 51 * imgScale * 2, 76 * imgScale * 2), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
                 container.on('pointerdown', () => this.onTileClick(container));
 
-                // 默认层级：右压左，下压上（col越大越右→越高，row越大越下→越高）
-                const defaultDepth = row * cols + col;
+                // 层深度：根据层级设置基础深度
+                const baseDepth = layerIndex * 1000;
+                const defaultDepth = baseDepth + (item.row + item.col) * 10;
                 container.setDepth(defaultDepth);
                 container.setData('defaultDepth', defaultDepth);
 
                 this.tiles.push(container);
-                this.boardGrid[row][col].layer1Tile = container;
+                // 注册到 boardGrid
+                if (!this.boardGrid[item.row][item.col]) {
+                    this.boardGrid[item.row][item.col] = [null, null, null, null];
+                }
+                this.boardGrid[item.row][item.col][layerIndex] = container;
 
-                // 创建独立阴影（第一层阴影在depth -1，在所有第一层牌之下）
+                // 创建独立阴影
                 const shadowImg = this.add.image(x, y, 'tile_shadow');
-                const shadowScale = Math.min((tileSize - 2) / 100, (tileHeight - 2) / 138);
+                const shadowScale = Math.min(tileSize / 51, tileHeight / 76);
                 shadowImg.setScale(shadowScale);
-                shadowImg.setDepth(-1);
+                shadowImg.setDepth(baseDepth - 1);
                 shadowImg.setData('origScale', shadowScale);
                 this.shadowLayer.push({ shadow: shadowImg, tile: container });
-            }
-        }
 
-        // 生成并渲染第二层牌
-        const layer2Plan = this.generateLayer2();
-
-        // 第二层牌也必须成对：生成偶数张牌，每种类型成对
-        const layer2Count = layer2Plan.length;
-        const layer2Types = [];
-        // 生成成对的类型（从34种牌中随机取）
-        for (let i = 0; i < layer2Count / 2; i++) {
-            const type = Math.floor(Math.random() * 34);
-            layer2Types.push(type, type);
-        }
-        // 如果是奇数，补一张（会在后面偶数校验时被移除）
-        if (layer2Count % 2 !== 0) {
-            layer2Types.push(Math.floor(Math.random() * 34));
-        }
-        // 打乱第二层牌序
-        for (let i = layer2Types.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [layer2Types[i], layer2Types[j]] = [layer2Types[j], layer2Types[i]];
-        }
-
-        layer2Plan.forEach((item, idx) => {
-            const positions = item.coverage;
-
-            // 所有第二层牌尺寸与第一层相同，用 renderRow/renderCol 定位
-            const renderW = tileSize;
-            const renderH = tileHeight;
-            // n+1层相对于n层：横向偏移-10px，纵向偏移-12px
-            const layerOffsetX = -10;
-            const layerOffsetY = -12;
-            const x = startX + item.renderCol * (tileSize - 10) + layerOffsetX;
-            const y = startY + item.renderRow * (tileHeight - 20) + layerOffsetY;
-
-            const container = this.add.container(x, y);
-
-            // 从成对的类型列表中取牌面
-            const type = layer2Types[idx];
-            const imgKey = `tile_${type % 34}`;
-            const tileImg = this.add.image(0, 0, imgKey);
-            const imgScale = Math.min((renderW - 2) / 100, (renderH - 2) / 138);
-            tileImg.setScale(imgScale);
-            container.add(tileImg);
-
-            container.setData('type', type);
-            container.setData('matched', false);
-            container.setData('tileW', renderW);
-            container.setData('tileH', renderH);
-            container.setData('imgScale', imgScale);
-            container.setData('layer', 1);
-            container.setData('coveredPositions', positions);
-            container.setData('isCovered', false);
-            container.setData('isFree', true);
-            container.setData('baseImgScale', imgScale);
-
-            container.setSize(renderW, renderH);
-            container.setInteractive({ useHandCursor: true });
-            container.on('pointerdown', () => this.onTileClick(container));
-
-            // 第二层深度：基于 renderRow/renderCol，右压左、下压上
-            const defaultDepth = 1000 + Math.round(item.renderRow) * cols + Math.round(item.renderCol);
-            container.setDepth(defaultDepth);
-            container.setData('defaultDepth', defaultDepth);
-
-            this.tiles.push(container);
-
-            // 创建独立阴影（第二层阴影在depth 999）
-            const shadowImg = this.add.image(x, y, 'tile_shadow');
-            const shadowScale = Math.min((renderW - 2) / 100, (renderH - 2) / 138);
-            shadowImg.setScale(shadowScale);
-            shadowImg.setDepth(999);
-            shadowImg.setData('origScale', shadowScale);
-            this.shadowLayer.push({ shadow: shadowImg, tile: container });
-
-            // 标记被覆盖的第一层牌
-            positions.forEach(([r, c]) => {
-                const l1Tile = this.boardGrid[r][c].layer1Tile;
-                if (l1Tile) {
-                    l1Tile.setData('isCovered', true);
-                    l1Tile.setData('isFree', false);
-                    l1Tile.disableInteractive();
-                }
-                this.boardGrid[r][c].layer2Tile = container;
+                // 标记被覆盖的下层牌
+                covered.forEach(([r, c]) => {
+                    if (r < 0 || r > 13 || c < 0 || c > 15) return;
+                    const lowerTile = this.boardGrid[r][c][layerIndex - 1];
+                    if (lowerTile) {
+                        lowerTile.setData('isCovered', true);
+                        lowerTile.setData('isFree', false);
+                        lowerTile.disableInteractive();
+                    }
+                });
             });
-        });
+        }
 
         // 更新总对数（确保偶数）
         if (this.tiles.length % 2 !== 0) {
-            // 找到一张第二层牌移除
-            let lastTile = this.tiles.filter(t => t.getData('layer') === 1).pop();
+            // 找到一张上层牌移除
+            let lastTile = this.tiles.filter(t => t.getData('layer') >= 1).pop();
             if (!lastTile) lastTile = this.tiles[this.tiles.length - 1];
 
-            // 清理该牌覆盖的位置
-            lastTile.getData('coveredPositions').forEach(([r, c]) => {
-                const l1Tile = this.boardGrid[r][c].layer1Tile;
-                if (l1Tile) {
-                    l1Tile.setData('isCovered', false);
-                    l1Tile.setData('isFree', true);
-                    l1Tile.setInteractive({ useHandCursor: true });
-                }
-                this.boardGrid[r][c].layer2Tile = null;
-            });
+            // 清理被移除牌覆盖的下层牌状态
+            const covered = lastTile.getData('coveredPositions');
+            const removedLayer = lastTile.getData('layer');
+            if (covered && removedLayer > 0) {
+                covered.forEach(([r, c]) => {
+                    const lowerTile = this.boardGrid[r][c][removedLayer - 1];
+                    if (lowerTile) {
+                        lowerTile.setData('isCovered', false);
+                        lowerTile.setData('isFree', true);
+                        lowerTile.setInteractive({ useHandCursor: true });
+                    }
+                });
+            }
+            // 清理 boardGrid 引用（用 tileRow/tileCol 而非 layer）
+            const tr = Math.round(lastTile.getData('tileRow'));
+            const tc = Math.round(lastTile.getData('tileCol'));
+            const layer = lastTile.getData('layer');
+            if (tr !== undefined && tc !== undefined && layer !== undefined) {
+                this.boardGrid[tr][tc][layer] = null;
+            }
             // 移除对应的阴影
             const shadowEntry = this.shadowLayer.find(s => s.tile === lastTile);
             if (shadowEntry) {
@@ -1266,9 +1340,8 @@ class GameScene extends Phaser.Scene {
         const bounceDist = 15; // 弹性过冲距离（原来的一半）
 
         const allEntries = this.tiles.map(tile => {
-            const coveredPositions = tile.getData('coveredPositions');
-            const row = coveredPositions[0][0];
-            const col = coveredPositions[0][1];
+            const row = tile.getData('tileRow');
+            const col = tile.getData('tileCol');
             return { tile, row, col, origX: tile.x, origY: tile.y };
         });
 
@@ -1278,18 +1351,18 @@ class GameScene extends Phaser.Scene {
             const { tile, row, col, origX } = entry;
 
             const fromLeft = col % 2 === 0;
-            const startX = fromLeft ? -offscreenX : this.w + offscreenX;
+            const animStartX = fromLeft ? -offscreenX : this.w + offscreenX;
             const overshootX = fromLeft ? origX + bounceDist : origX - bounceDist;
 
             const delay = row * rowDelay;
             const endTime = delay + duration + 80;
             if (endTime > maxEndTime) maxEndTime = endTime;
 
-            tile.x = startX;
+            tile.x = animStartX;
 
             const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
             if (shadowEntry) {
-                shadowEntry.shadow.x = startX;
+                shadowEntry.shadow.x = animStartX;
             }
 
             this.time.delayedCall(delay, () => {
@@ -1338,18 +1411,17 @@ class GameScene extends Phaser.Scene {
         // 每张牌到角落的距离 = |row - cornerRow| + |col - cornerCol|
         let cornerRow, cornerCol;
         switch (corner) {
-            case 'scaleBottomRight': cornerRow = 7; cornerCol = 6; break;
-            case 'scaleBottomLeft':  cornerRow = 7; cornerCol = 0; break;
-            case 'scaleTopRight':    cornerRow = 0; cornerCol = 6; break;
+            case 'scaleBottomRight': cornerRow = 13; cornerCol = 15; break;
+            case 'scaleBottomLeft':  cornerRow = 13; cornerCol = 0; break;
+            case 'scaleTopRight':    cornerRow = 0; cornerCol = 15; break;
             case 'scaleTopLeft':     cornerRow = 0; cornerCol = 0; break;
         }
 
         let maxEndTime = 0;
 
         this.tiles.forEach(tile => {
-            const coveredPositions = tile.getData('coveredPositions');
-            const row = coveredPositions[0][0];
-            const col = coveredPositions[0][1];
+            const row = tile.getData('tileRow');
+            const col = tile.getData('tileCol');
             const dist = Math.abs(row - cornerRow) + Math.abs(col - cornerCol);
 
             // 延迟按距离计算：离角落越远越晚出现
@@ -1415,10 +1487,9 @@ class GameScene extends Phaser.Scene {
         const bounceDist = 15; // 弹性过冲距离（原来的一半）
 
         const allEntries = this.tiles.map(tile => {
-            const coveredPositions = tile.getData('coveredPositions');
-            const row = coveredPositions[0][0];
-            const col = coveredPositions[0][1];
-            return { tile, row, col, origX: tile.x, origY: tile.y };
+            // 动画延时用 14×16 网格 row 值，不再取 coveredPositions
+            const row = tile.getData('tileRow');
+            return { tile, row, origX: tile.x, origY: tile.y };
         });
 
         let maxEndTime = 0;
@@ -1428,18 +1499,18 @@ class GameScene extends Phaser.Scene {
 
             // 从上到下：从屏幕上方飞入；从下到上：从屏幕下方飞入
             const fromTop = type === 'slideDown';
-            const startY = fromTop ? -offscreenY : this.h + offscreenY;
+            const startAnimY = fromTop ? -offscreenY : this.h + offscreenY;
             const overshootY = fromTop ? origY + bounceDist : origY - bounceDist;
 
             const delay = row * rowDelay;
             const endTime = delay + duration + 80;
             if (endTime > maxEndTime) maxEndTime = endTime;
 
-            tile.y = startY;
+            tile.y = startAnimY;
 
             const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
             if (shadowEntry) {
-                shadowEntry.shadow.y = startY;
+                shadowEntry.shadow.y = startAnimY;
             }
 
             this.time.delayedCall(delay, () => {
@@ -1495,7 +1566,40 @@ class GameScene extends Phaser.Scene {
     }
 
     // 碰撞消除动画：起飞 → 靠近 → 缩小消失
+    // 注意：点击选中时暗扣牌已经翻正，这里直接执行碰撞动画
     animateCollision(tileA, tileB, onComplete) {
+        this._runCollisionAnimation(tileA, tileB, onComplete);
+    }
+
+    // 翻正暗扣牌（水平翻转动画，翻完后执行回调）
+    flipFaceUp(tile, onComplete) {
+        tile.setData('isFaceDown', false);
+        const tileImg = tile.list[0];
+        const baseScale = tile.getData('imgScale');
+        const faceTexture = `tile_${tile.getData('type') % 34}`;
+
+        this.tweens.add({
+            targets: tileImg,
+            scaleX: 0,
+            duration: 120,
+            ease: 'Sine.easeIn',
+            onComplete: () => {
+                tileImg.setTexture(faceTexture);
+                this.tweens.add({
+                    targets: tileImg,
+                    scaleX: baseScale,
+                    duration: 120,
+                    ease: 'Sine.easeOut',
+                    onComplete: () => {
+                        if (onComplete) onComplete();
+                    }
+                });
+            }
+        });
+    }
+
+    // 实际碰撞动画（翻正后调用）
+    _runCollisionAnimation(tileA, tileB, onComplete) {
         const ax = tileA.x;
         const ay = tileA.y;
         const bx = tileB.x;
@@ -1526,12 +1630,27 @@ class GameScene extends Phaser.Scene {
         // tileW 已在上面声明
 
         // 确保在最上层
-        tileA.setDepth(30000);
-        tileB.setDepth(30000);
+        tileA.setDepth(5500);
+        tileB.setDepth(5500);
         const seA = this.shadowLayer.find(s => s.tile === tileA);
         const seB = this.shadowLayer.find(s => s.tile === tileB);
-        if (seA) seA.shadow.setDepth(29999);
-        if (seB) seB.shadow.setDepth(29999);
+        if (seA) seA.shadow.setDepth(5499);
+        if (seB) seB.shadow.setDepth(5499);
+
+        // 碰撞前将两张牌的图片和阴影都恢复到正常缩放（取消选中放大效果）
+        [tileA, tileB].forEach(t => {
+            const img = t.list[0];
+            if (img) {
+                const baseScale = t.getData('imgScale');
+                img.setScale(baseScale);
+            }
+        });
+        [seA, seB].forEach(entry => {
+            if (entry && entry.shadow) {
+                const origScale = entry.shadow.getData('origScale');
+                entry.shadow.setScale(origScale);
+            }
+        });
 
         // 阶段1：起飞（330ms，Sine.easeOut）
         this.tweens.add({
@@ -1731,9 +1850,9 @@ class GameScene extends Phaser.Scene {
                 }
             }
         }
-        tile.setDepth(20000);
+        tile.setDepth(5000);
         if (shadowEntry) {
-            shadowEntry.shadow.setDepth(19999);
+            shadowEntry.shadow.setDepth(4999);
         }
 
         // 提示牌选中时不停止摇晃，保持摇晃
@@ -1841,12 +1960,173 @@ class GameScene extends Phaser.Scene {
         }
     }
 
+    // 点击锁定牌时抖动效果
+    shakeLockedTile(tile) {
+        const tilesToShake = [tile];
+        const layer = tile.getData('layer');
+        const row = tile.getData('tileRow');
+        const col = tile.getData('tileCol');
+        let leftNeighbor = null;
+        let rightNeighbor = null;
+
+        // 检查是否被左右夹住锁定
+        const leftBlocked = this.hasSideNeighbor(tile, 'left');
+        const rightBlocked = this.hasSideNeighbor(tile, 'right');
+
+        if (leftBlocked && rightBlocked) {
+            // 左右都被挡住 → 找左右两侧的牌一起抖动
+            const allTiles = this.tiles.filter(t => !t.getData('matched') && t.getData('layer') === layer);
+            for (const other of allTiles) {
+                if (other === tile) continue;
+                const otherRow = other.getData('tileRow');
+                const otherCol = other.getData('tileCol');
+                if (col - otherCol === 2 && Math.abs(row - otherRow) <= 1) {
+                    tilesToShake.push(other); // left neighbor
+                    leftNeighbor = other;
+                }
+                if (otherCol - col === 2 && Math.abs(row - otherRow) <= 1) {
+                    tilesToShake.push(other); // right neighbor
+                    rightNeighbor = other;
+                }
+            }
+        } else if (tile.getData('isCovered')) {
+            // 被压住锁定 → 找压住它的上层牌一起抖动
+            for (const other of this.tiles) {
+                if (other.getData('matched')) continue;
+                if (other.getData('layer') !== layer + 1) continue;
+                const otherRow = other.getData('tileRow');
+                const otherCol = other.getData('tileCol');
+                if (Math.abs(row - otherRow) <= 1 && Math.abs(col - otherCol) <= 1) {
+                    tilesToShake.push(other);
+                }
+            }
+        }
+
+        // 执行抖动动画（左右弹性抖动，持续500ms）
+        tilesToShake.forEach(t => {
+            const tileImg = t.list[0];
+            if (!tileImg) return;
+
+            const shadowEntry = this.shadowLayer.find(s => s.tile === t);
+            const shadowImg = shadowEntry ? shadowEntry.shadow : null;
+
+            // 抖动序列：-6° → 6° → -6° → 6° → 0°
+            const seq = [
+                { angle: -6, duration: 80, ease: 'Sine.easeOut' },
+                { angle: 6, duration: 80, ease: 'Sine.easeInOut' },
+                { angle: -6, duration: 80, ease: 'Sine.easeInOut' },
+                { angle: 6, duration: 80, ease: 'Sine.easeInOut' },
+                { angle: 0, duration: 80, ease: 'Sine.easeIn' }
+            ];
+
+            let totalDelay = 0;
+            seq.forEach(step => {
+                this.tweens.add({
+                    targets: tileImg,
+                    angle: step.angle,
+                    duration: step.duration,
+                    ease: step.ease,
+                    delay: totalDelay
+                });
+                if (shadowImg) {
+                    this.tweens.add({
+                        targets: shadowImg,
+                        angle: step.angle,
+                        duration: step.duration,
+                        ease: step.ease,
+                        delay: totalDelay
+                    });
+                }
+                totalDelay += step.duration;
+            });
+        });
+
+        // 如果是左右夹住锁定，显示红色叉叉在点位左右各一张牌宽度位置
+        if (leftBlocked && rightBlocked) {
+            const imgScale = tile.getData('imgScale') || 0.8;
+            const tileWidth = 47 * imgScale;
+            const layer = tile.getData('layer');
+
+            // 获取牌的点位（container位置，即交点坐标）
+            const pointX = tile.x;
+            const pointY = tile.y;
+
+            // 点位左偏移一张牌，点位右偏移一张牌
+            const leftCrossX = pointX - tileWidth;
+            const rightCrossX = pointX + tileWidth;
+
+            // 创建红色叉叉图标（左右各一个），作为独立元素，层级设为当前层最高
+            // 缩小20%：原为 imgScale * 0.6 * 6 = imgScale * 3.6，缩小20% = imgScale * 2.88
+            const crossImages = [];
+            [leftCrossX, rightCrossX].forEach((crossX) => {
+                const crossImg = this.add.image(crossX, pointY, 'red_cross');
+                crossImg.setScale(imgScale * 2.88); // 缩小20%后的大小
+                crossImg.setDepth(layer * 1000 + 999); // 本层最高
+                crossImg.setAngle(0);
+                crossImages.push(crossImg);
+
+                // 500ms后开始缩小消失
+                this.time.delayedCall(500, () => {
+                    this.tweens.add({
+                        targets: crossImg,
+                        scaleX: 0,
+                        scaleY: 0,
+                        alpha: 0,
+                        duration: 300,
+                        ease: 'Sine.easeIn',
+                        onComplete: () => crossImg.destroy()
+                    });
+                });
+            });
+
+            // 让叉跟随抖动（与牌面图tile.list[0]保持相同的角度动画）
+            const tileImg = tile.list[0];
+            const seq = [
+                { angle: -6, duration: 80, ease: 'Sine.easeOut' },
+                { angle: 6, duration: 80, ease: 'Sine.easeInOut' },
+                { angle: -6, duration: 80, ease: 'Sine.easeInOut' },
+                { angle: 6, duration: 80, ease: 'Sine.easeInOut' },
+                { angle: 0, duration: 80, ease: 'Sine.easeIn' }
+            ];
+            let totalDelay = 0;
+            seq.forEach(step => {
+                // 牌的图片抖动
+                this.tweens.add({
+                    targets: tileImg,
+                    angle: step.angle,
+                    duration: step.duration,
+                    ease: step.ease,
+                    delay: totalDelay
+                });
+                // 叉也抖动同样的角度
+                crossImages.forEach(crossImg => {
+                    this.tweens.add({
+                        targets: crossImg,
+                        angle: step.angle,
+                        duration: step.duration,
+                        ease: step.ease,
+                        delay: totalDelay
+                    });
+                });
+                totalDelay += step.duration;
+            });
+        }
+
+
+        // 播放音效
+        this.sound.play('sfx-click01');
+    }
+
     onTileClick(tile) {
         if (this.isProcessing) return;
         if (tile.getData('matched')) return;
 
-        // 自由牌检查：被锁定的牌不可选中
-        if (!this.isTileFree(tile)) return;
+        // 自由牌检查：被锁定的牌不可选中，但打断连击并抖动
+        if (!this.isTileFree(tile)) {
+            this.combo = 0;
+            this.shakeLockedTile(tile);
+            return;
+        }
 
         // 再次点击已选中的牌 → 取消选中
         if (this.selectedTiles.includes(tile)) {
@@ -1867,67 +2147,75 @@ class GameScene extends Phaser.Scene {
                 this.animateSelectTile(tile);
                 this.selectedTiles.push(tile);
 
-                // 清除两张牌的绿色选中效果（提示牌保持黄色）
-                const clearGreen = (t) => {
-                    const img = t.list[0];
-                    if (img && img.clearTint) {
-                        img.clearTint();
-                        if (t.getData('hintTint')) {
-                            img.setTint(0xf1c40f);
+                // 等待翻转动画完成（暗扣牌240ms，普通牌即时）后再执行消除
+                const delay = tile.getData('isFaceDown') ? 250 : 50;
+                this.time.delayedCall(delay, () => {
+                    // 清除两张牌的绿色选中效果（提示牌保持黄色）
+                    const clearGreen = (t) => {
+                        const img = t.list[0];
+                        if (img && img.clearTint) {
+                            img.clearTint();
+                            if (t.getData('hintTint')) {
+                                img.setTint(0xf1c40f);
+                            }
                         }
-                    }
-                };
-                clearGreen(selectedTile);
-                clearGreen(tile);
+                    };
+                    clearGreen(selectedTile);
+                    clearGreen(tile);
 
-                // 碰撞前清除提示状态（黄色+摇晃）
-                this.stopHintSwing(selectedTile);
-                this.stopHintSwing(tile);
-                [selectedTile, tile].forEach(t => {
-                    t.setData('hintTint', false);
-                    const img = t.list[0];
-                    if (img && img.clearTint) {
-                        img.clearTint();
-                    }
-                });
-                // 重置角度防止摇晃残留
-                selectedTile.list[0].setAngle(0);
-                tile.list[0].setAngle(0);
+                    // 碰撞前清除提示状态（黄色+摇晃）
+                    this.stopHintSwing(selectedTile);
+                    this.stopHintSwing(tile);
+                    [selectedTile, tile].forEach(t => {
+                        t.setData('hintTint', false);
+                        const img = t.list[0];
+                        if (img && img.clearTint) {
+                            img.clearTint();
+                        }
+                    });
+                    // 重置角度防止摇晃残留
+                    selectedTile.list[0].setAngle(0);
+                    tile.list[0].setAngle(0);
 
-                // 碰撞消除动画，动画结束后执行消除逻辑
-                this.animateCollision(selectedTile, tile, () => {
-                    selectedTile.setData('matched', true);
-                    tile.setData('matched', true);
+                    // 碰撞消除动画，动画结束后执行消除逻辑
+                    this.animateCollision(selectedTile, tile, () => {
+                        selectedTile.setData('matched', true);
+                        tile.setData('matched', true);
 
-                    if (this.hintTiles.includes(selectedTile) || this.hintTiles.includes(tile)) {
-                        this.clearHint();
-                    }
+                        if (this.hintTiles.includes(selectedTile) || this.hintTiles.includes(tile)) {
+                            this.clearHint();
+                        }
 
-                    // 如果消除的是上层牌，刷新第一层覆盖状态
-                    if (selectedTile.getData('layer') > 0 || tile.getData('layer') > 0) {
-                        this.refreshCoveredState();
-                    }
+                        // 如果消除的是上层牌，刷新第一层覆盖状态
+                        if (selectedTile.getData('layer') > 0 || tile.getData('layer') > 0) {
+                            this.refreshCoveredState();
+                        }
 
-                    this.matchedPairs++;
-                    this.score += 200;
-                    this.scoreText.setText(`${this.score}`);
+                        this.matchedPairs++;
+                        this.score += 200;
+                        this.combo++;
+                        if (this.combo > this.maxCombo) {
+                            this.maxCombo = this.combo;
+                        }
+                        this.scoreText.setText(`${this.score}`);
 
-                    this.selectedTiles = [];
-                    this.isProcessing = false;
+                        this.selectedTiles = [];
+                        this.isProcessing = false;
 
-                    // 重新计算所有牌的自由状态
-                    this.recalculateAllFreeStatus();
+                        // 重新计算所有牌的自由状态
+                        this.recalculateAllFreeStatus();
 
-                    // 消除后检查是否还有自由配对，没有则自动洗牌
-                    if (!this.hasFreePairs()) {
-                        this.smartShuffle();
-                    }
+                        // 消除后检查匹配数是否为0，为0则自动洗牌
+                        if (this.remainingPairs === 0) {
+                            this.smartShuffle();
+                        }
 
-                    // 检查是否通关
-                    const remaining = this.tiles.filter(t => !t.getData('matched'));
-                    if (remaining.length === 0) {
-                        this.time.delayedCall(500, () => this.levelComplete());
-                    }
+                        // 检查是否通关
+                        const remaining = this.tiles.filter(t => !t.getData('matched'));
+                        if (remaining.length === 0) {
+                            this.time.delayedCall(500, () => this.levelComplete());
+                        }
+                    });
                 });
             } else {
                 // 类型不同 → 取消前一张，选中新牌
@@ -1969,13 +2257,17 @@ class GameScene extends Phaser.Scene {
     }
 
     levelComplete() {
+        this.sound.play('sfx-levelComplete');
         const nextLevel = this.currentLevel + 1;
         localStorage.setItem('mahjongLevel', nextLevel.toString());
+        const elapsedTime = Math.floor((Date.now() - this.startTime) / 1000);
 
         this.scene.start('ResultsScene', {
             level: this.currentLevel,
             completed: true,
-            score: this.score
+            score: this.score,
+            maxCombo: this.maxCombo,
+            elapsedTime: elapsedTime
         });
     }
 
@@ -1986,7 +2278,7 @@ class GameScene extends Phaser.Scene {
 
         // 确保总数为偶数（如果奇数则移除一张第二层牌）
         if (allTypes.length % 2 !== 0) {
-            const layer2Tiles = unmatchedTiles.filter(t => t.getData('layer') === 1);
+            const layer2Tiles = unmatchedTiles.filter(t => t.getData('layer') >= 1);
             if (layer2Tiles.length > 0) {
                 const lastL2 = layer2Tiles[layer2Tiles.length - 1];
                 const idx = unmatchedTiles.indexOf(lastL2);
@@ -1994,15 +2286,24 @@ class GameScene extends Phaser.Scene {
                     unmatchedTiles.splice(idx, 1);
                     allTypes.pop();
                     // 解锁被移除牌覆盖的位置
-                    lastL2.getData('coveredPositions').forEach(([r, c]) => {
-                        const cell = this.boardGrid[r][c];
-                        if (cell && cell.layer1Tile) {
-                            cell.layer1Tile.setData('isCovered', false);
-                            cell.layer1Tile.setData('isFree', true);
-                            cell.layer1Tile.setInteractive({ useHandCursor: true });
-                        }
-                        cell.layer2Tile = null;
-                    });
+                    const covered = lastL2.getData('coveredPositions');
+                    const removedLayer = lastL2.getData('layer');
+                    if (covered && removedLayer > 0) {
+                        covered.forEach(([r, c]) => {
+                            const tile = this.boardGrid[r][c][removedLayer - 1];
+                            if (tile) {
+                                tile.setData('isCovered', false);
+                                tile.setData('isFree', true);
+                                tile.setInteractive({ useHandCursor: true });
+                            }
+                        });
+                    }
+                    // 清理 boardGrid 引用（需要取整）
+                    const tr = Math.round(lastL2.getData('tileRow'));
+                    const tc = Math.round(lastL2.getData('tileCol'));
+                    if (tr !== undefined && tc !== undefined) {
+                        this.boardGrid[tr][tc][lastL2.getData('layer')] = null;
+                    }
                     // 移除阴影
                     const shadowEntry = this.shadowLayer.find(s => s.tile === lastL2);
                     if (shadowEntry) {
@@ -2031,7 +2332,7 @@ class GameScene extends Phaser.Scene {
         return newTypes;
     }
 
-    // 检查当前自由牌中是否有可配对的
+    // 检查当前自由牌中是否有可配对的（至少1对）
     hasFreePairs() {
         const freeTiles = this.tiles.filter(t => !t.getData('matched') && this.isTileFree(t));
         const typeCounts = {};
@@ -2039,7 +2340,8 @@ class GameScene extends Phaser.Scene {
             const type = t.getData('type');
             typeCounts[type] = (typeCounts[type] || 0) + 1;
         });
-        return Object.values(typeCounts).some(count => count >= 2);
+        const pairs = Object.values(typeCounts).reduce((acc, count) => acc + Math.floor(count / 2), 0);
+        return pairs >= 1; // 洗牌后必须保证至少1对自由牌
     }
 
     // 智能洗牌：带动画版本，被外部调用（消除后无配对、提示无配对）
@@ -2047,33 +2349,28 @@ class GameScene extends Phaser.Scene {
         this.animateShuffleBoard(() => this.doSmartShuffleLogic());
     }
 
-    // 智能洗牌纯逻辑：50次尝试，保证至少一对自由牌可配对
+    // 智能洗牌纯逻辑：50次尝试，维持牌的种类和数量，只调换位置，保证至少一对自由牌可配对
     doSmartShuffleLogic() {
         const maxAttempts = 50;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const unmatchedTiles = this.tiles.filter(t => !t.getData('matched'));
 
-            // 重新生成成对类型
-            const pairCount = unmatchedTiles.length / 2;
-            const newTypes = [];
-            for (let i = 0; i < pairCount; i++) {
-                const type = Math.floor(Math.random() * 34);
-                newTypes.push(type, type);
-            }
-            // 打乱
-            for (let i = newTypes.length - 1; i > 0; i--) {
+            // 收集当前所有牌的牌面类型（保持种类和数量不变）
+            const types = unmatchedTiles.map(t => t.getData('type'));
+            // 打乱牌面类型顺序
+            for (let i = types.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [newTypes[i], newTypes[j]] = [newTypes[j], newTypes[i]];
+                [types[i], types[j]] = [types[j], types[i]];
             }
 
+            // 重新分配牌面类型
             unmatchedTiles.forEach((tile, i) => {
-                const newType = newTypes[i];
-                tile.setData('type', newType);
+                tile.setData('type', types[i]);
                 const tileImg = tile.list[0];
                 if (tileImg && tileImg.setTexture) {
                     // 暗扣牌洗牌后保持背面，否则更新正面
                     if (!tile.getData('isFaceDown')) {
-                        tileImg.setTexture(`tile_${newType % 34}`);
+                        tileImg.setTexture(`tile_${types[i] % 34}`);
                     }
                 }
                 tile.setData('hintTint', false);
@@ -2090,5 +2387,57 @@ class GameScene extends Phaser.Scene {
 
         // 如果50次都没找到，至少做一次洗牌（兜底）
         this.recalculateAllFreeStatus();
+    }
+
+    // 调试：切换 14×16 交点网格辅助线
+    toggleDebugGrid() {
+        if (this.debugGridGraphics) {
+            const texts = this.debugGridGraphics.getData('debugTexts');
+            if (texts) texts.forEach(t => t.destroy());
+            this.debugGridGraphics.destroy();
+            this.debugGridGraphics = null;
+            return;
+        }
+
+        const { startX, startY, stepX, stepY, effCols, effRows } = this.boardParams;
+        const g = this.add.graphics();
+        g.setDepth(99999);
+        const debugTexts = [];
+
+        // 画棋盘边框（底层牌占用区域：从 (0,0) 到 ((effRows-1)*2, (effCols-1)*2) 的交点范围）
+        const lastBaseRow = (effRows - 1) * 2; // 12
+        const lastBaseCol = (effCols - 1) * 2; // 10
+        const boardX1 = startX - stepX * 0.5;
+        const boardY1 = startY - stepY * 0.5;
+        const boardX2 = startX + lastBaseCol * stepX + stepX * 0.5;
+        const boardY2 = startY + lastBaseRow * stepY + stepY * 0.5;
+        g.lineStyle(1, 0xffffff, 0.3);
+        g.strokeRect(boardX1, boardY1, boardX2 - boardX1, boardY2 - boardY1);
+
+        // 画所有 12×14 交点
+        for (let r = 0; r <= 13; r++) {
+            for (let c = 0; c <= 11; c++) {
+                const x = startX + c * stepX;
+                const y = startY + r * stepY;
+
+                // 偶数×偶数交点（底层牌位置）用绿色，其他用灰色
+                const isBase = (r % 2 === 0 && c % 2 === 0);
+                const color = isBase ? 0x00ff00 : 0x888888;
+                const radius = isBase ? 4 : 2;
+
+                g.fillStyle(color, 0.8);
+                g.fillCircle(x, y, radius);
+
+                // 标注坐标
+                const txt = this.add.text(x, y - 8, `${r},${c}`, {
+                    fontSize: '8px',
+                    color: isBase ? '#00ff00' : '#888888'
+                }).setOrigin(0.5).setDepth(99999);
+                debugTexts.push(txt);
+            }
+        }
+
+        this.debugGridGraphics = g;
+        g.setData('debugTexts', debugTexts);
     }
 }

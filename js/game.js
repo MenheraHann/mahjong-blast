@@ -12,7 +12,7 @@ const config = {
         width: DESIGN_WIDTH,
         height: DESIGN_HEIGHT
     },
-    scene: [HomeScene, GameScene, ResultsScene, EditorScene],
+    scene: [HomeScene, GameScene, ResultsScene],
     backgroundColor: '#2c3e50'
 };
 
