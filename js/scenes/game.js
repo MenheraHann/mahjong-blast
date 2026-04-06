@@ -292,44 +292,58 @@ class GameScene extends Phaser.Scene {
         this.hintTiles = pair;
     }
 
-    // 提示牌钟摆摇晃效果
+    // 提示牌钟摆摇晃效果：三次摇晃，第二次最大，前后有弹性
     startHintSwing(tile) {
         const tileImg = tile.list[0];
+        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+        const shadowImg = shadowEntry ? shadowEntry.shadow : null;
         if (!tileImg) return;
 
-        const swingTween = this.tweens.add({
-            targets: tileImg,
-            angle: { from: -6, to: 6 },
-            duration: 200,
-            ease: 'Sine.easeInOut',
-            yoyo: true,
-            repeat: 2, // 摇3次（-6→6→-6→6→-6）
-            onComplete: () => {
-                tileImg.setAngle(0);
-            }
-        });
-        tile.setData('hintSwingTween', swingTween);
+        const doSwing = () => {
+            // 三次摇晃序列：小(-4°) → 大(-8°~8°) → 小(-4°)，每次200ms，共600ms
+            const seq = [
+                { angle: -4, duration: 100, ease: 'Sine.easeOut' },
+                { angle: 8, duration: 100, ease: 'Sine.easeIn' },
+                { angle: -8, duration: 200, ease: 'Sine.easeInOut' },
+                { angle: 4, duration: 100, ease: 'Sine.easeOut' },
+                { angle: 0, duration: 100, ease: 'Sine.easeIn' }
+            ];
 
-        // 每3秒重复摇晃
+            let totalDelay = 0;
+            seq.forEach(step => {
+                this.tweens.add({
+                    targets: tileImg,
+                    angle: step.angle,
+                    duration: step.duration,
+                    ease: step.ease,
+                    delay: totalDelay
+                });
+                if (shadowImg) {
+                    this.tweens.add({
+                        targets: shadowImg,
+                        angle: step.angle,
+                        duration: step.duration,
+                        ease: step.ease,
+                        delay: totalDelay
+                    });
+                }
+                totalDelay += step.duration;
+            });
+        };
+
+        // 首次立即摇晃
+        doSwing();
+        tile.setData('hintSwingTween', true);
+
+        // 间隔600ms后重复
         const timer = this.time.addEvent({
-            delay: 3000,
+            delay: 1200, // 600ms摇晃 + 600ms间隔
             callback: () => {
                 if (!tile.getData('hintTint') || tile.getData('matched')) {
                     timer.remove();
                     return;
                 }
-                const tw = this.tweens.add({
-                    targets: tileImg,
-                    angle: { from: -6, to: 6 },
-                    duration: 200,
-                    ease: 'Sine.easeInOut',
-                    yoyo: true,
-                    repeat: 2,
-                    onComplete: () => {
-                        tileImg.setAngle(0);
-                    }
-                });
-                tile.setData('hintSwingTween', tw);
+                doSwing();
             },
             loop: true
         });
@@ -338,10 +352,15 @@ class GameScene extends Phaser.Scene {
 
     // 停止提示牌摇晃
     stopHintSwing(tile) {
-        const swingTween = tile.getData('hintSwingTween');
-        if (swingTween) {
-            this.tweens.killTweensOf(tile.list[0]);
-            if (tile.list[0]) tile.list[0].setAngle(0);
+        const tileImg = tile.list[0];
+        if (tileImg) {
+            this.tweens.killTweensOf(tileImg);
+            tileImg.setAngle(0);
+        }
+        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+        if (shadowEntry && shadowEntry.shadow) {
+            this.tweens.killTweensOf(shadowEntry.shadow);
+            shadowEntry.shadow.setAngle(0);
         }
         const timer = tile.getData('hintSwingTimer');
         if (timer) {
