@@ -90,7 +90,7 @@ class GameScene extends Phaser.Scene {
         const topY = 45;
 
         // 1. 返回按钮
-        const backBtn = this.add.image(30, topY, 'icon-back').setScale(0.7).setInteractive({ useHandCursor: true });
+        const backBtn = this.add.image(30, topY, 'icon-back').setScale(1.4).setInteractive({ useHandCursor: true });
         backBtn.on('pointerdown', () => {
             this.sound.play('sfx-button');
             this.showConfirmDialog('确定要返回主菜单吗？', () => {
@@ -100,42 +100,42 @@ class GameScene extends Phaser.Scene {
 
         // 2. 关卡数
         this.levelText = this.add.text(0, 0, `${this.currentLevel}`, {
-            fontSize: '22px',
+            fontSize: '44px',
             color: '#ffffff',
             fontStyle: 'bold'
         }).setOrigin(0.5, 0);
 
         const levelLabel = this.add.text(0, -18, '关卡', {
-            fontSize: '16px',
+            fontSize: '32px',
             color: '#bdc3c7'
         }).setOrigin(0.5, 0);
 
         // 3. 分数
         this.scoreText = this.add.text(0, 0, '0', {
-            fontSize: '22px',
+            fontSize: '44px',
             color: '#f1c40f',
             fontStyle: 'bold'
         }).setOrigin(0.5, 0);
 
         const scoreLabel = this.add.text(0, -18, '分数', {
-            fontSize: '16px',
+            fontSize: '32px',
             color: '#bdc3c7'
         }).setOrigin(0.5, 0);
 
         // 4. 匹配数
         this.matchText = this.add.text(0, 0, '0', {
-            fontSize: '22px',
+            fontSize: '44px',
             color: '#2ecc71',
             fontStyle: 'bold'
         }).setOrigin(0.5, 0);
 
         const matchLabel = this.add.text(0, -18, '匹配', {
-            fontSize: '16px',
+            fontSize: '32px',
             color: '#bdc3c7'
         }).setOrigin(0.5, 0);
 
         // 三组居中排列
-        const spacing = 120;
+        const spacing = 240;
         const groupCenterX = this.w / 2;
         const groupY = topY - 5;
 
@@ -155,7 +155,7 @@ class GameScene extends Phaser.Scene {
         this.matchText.y = groupY + 12;
 
         // 5. 菜单按钮
-        const menuBtn = this.add.image(this.w - 35, topY, 'icon-menu').setScale(0.75).setInteractive({ useHandCursor: true });
+        const menuBtn = this.add.image(this.w - 35, topY, 'icon-menu').setScale(1.5).setInteractive({ useHandCursor: true });
         menuBtn.on('pointerdown', () => {
             this.sound.play('sfx-button');
             this.showMenu();
@@ -170,17 +170,17 @@ class GameScene extends Phaser.Scene {
             .setStrokeStyle(2, 0x7f8c8d).setDepth(6001);
 
         const msgText = this.add.text(this.w / 2, this.h / 2 - 90, message, {
-            fontSize: '22px',
+            fontSize: '44px',
             color: '#ecf0f1',
-            wordWrap: { width: 350 },
+            wordWrap: { width: 700 },
             align: 'center'
         }).setOrigin(0.5).setDepth(6001);
 
         const confirmBtn = this.add.text(this.w / 2 - 80, this.h / 2, '确定', {
-            fontSize: '22px',
+            fontSize: '44px',
             color: '#ffffff',
             backgroundColor: '#e74c3c',
-            padding: { x: 25, y: 10 }
+            padding: { x: 50, y: 20 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
 
         confirmBtn.on('pointerdown', () => {
@@ -190,10 +190,10 @@ class GameScene extends Phaser.Scene {
         });
 
         const cancelBtn = this.add.text(this.w / 2 + 80, this.h / 2, '取消', {
-            fontSize: '22px',
+            fontSize: '44px',
             color: '#ffffff',
             backgroundColor: '#3498db',
-            padding: { x: 25, y: 10 }
+            padding: { x: 50, y: 20 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
 
         cancelBtn.on('pointerdown', () => {
@@ -206,20 +206,20 @@ class GameScene extends Phaser.Scene {
         const overlay = this.add.rectangle(this.w / 2, this.h / 2, this.w, this.h, 0x000000, 0.5)
             .setInteractive().setDepth(6000);
 
-        const dialogBg = this.add.rectangle(this.w / 2, this.h / 2, 350, 250, 0x2c3e50)
+        const dialogBg = this.add.rectangle(this.w / 2, this.h / 2, 600, 400, 0x2c3e50)
             .setStrokeStyle(2, 0x7f8c8d).setDepth(6001);
 
-        const title = this.add.text(this.w / 2, this.h / 2 - 90, '菜单', {
-            fontSize: '28px',
+        const title = this.add.text(this.w / 2, this.h / 2 - 160, '菜单', {
+            fontSize: '56px',
             color: '#ecf0f1',
             fontStyle: 'bold'
         }).setOrigin(0.5).setDepth(6001);
 
-        const restartBtn = this.add.text(this.w / 2, this.h / 2 - 20, '重新开始', {
-            fontSize: '24px',
+        const restartBtn = this.add.text(this.w / 2, this.h / 2 - 40, '重新开始', {
+            fontSize: '48px',
             color: '#ffffff',
             backgroundColor: '#e67e22',
-            padding: { x: 40, y: 12 }
+            padding: { x: 80, y: 24 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
 
         restartBtn.on('pointerdown', () => {
@@ -228,11 +228,11 @@ class GameScene extends Phaser.Scene {
             this.scene.restart({ level: this.currentLevel });
         });
 
-        const menuBtn2 = this.add.text(this.w / 2, this.h / 2 + 50, '返回主菜单', {
-            fontSize: '24px',
+        const menuBtn2 = this.add.text(this.w / 2, this.h / 2 + 60, '返回主菜单', {
+            fontSize: '48px',
             color: '#ffffff',
             backgroundColor: '#3498db',
-            padding: { x: 40, y: 12 }
+            padding: { x: 80, y: 24 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
 
         menuBtn2.on('pointerdown', () => {
@@ -253,26 +253,26 @@ class GameScene extends Phaser.Scene {
         this.add.rectangle(this.w / 2, bottomY, this.w, 90, 0x2c3e50).setOrigin(0.5);
 
         // 重新洗牌按钮
-        this.shuffleBtn = this.add.image(this.w / 2 - 100, bottomY, 'icon-shuffle').setScale(0.9).setInteractive({ useHandCursor: true });
+        this.shuffleBtn = this.add.image(this.w / 2 - 100, bottomY, 'icon-shuffle').setScale(1.8).setInteractive({ useHandCursor: true });
         this.shuffleCountText = this.add.text(this.w / 2 - 80, bottomY - 25, `${this.shuffleCount}`, {
-            fontSize: '16px',
+            fontSize: '32px',
             color: '#ffffff',
             backgroundColor: '#e74c3c',
-            padding: { x: 6, y: 2 }
+            padding: { x: 12, y: 4 }
         }).setOrigin(0.5);
         this.shuffleBtn.on('pointerdown', () => {
             this.shuffleBoard();
         });
 
         // 提示按钮
-        this.hintBtn = this.add.image(this.w / 2 + 100, bottomY, 'icon-hint').setScale(0.9).setInteractive({ useHandCursor: true });
+        this.hintBtn = this.add.image(this.w / 2 + 100, bottomY, 'icon-hint').setScale(1.8).setInteractive({ useHandCursor: true });
 
         // 提示次数角标
         this.hintCountText = this.add.text(this.w / 2 + 120, bottomY - 25, `${this.hintCount}`, {
-            fontSize: '16px',
+            fontSize: '32px',
             color: '#ffffff',
             backgroundColor: '#e74c3c',
-            padding: { x: 6, y: 2 }
+            padding: { x: 12, y: 4 }
         }).setOrigin(0.5);
 
         this.hintBtn.on('pointerdown', () => {
