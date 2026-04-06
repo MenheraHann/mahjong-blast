@@ -1391,13 +1391,9 @@ class GameScene extends Phaser.Scene {
                     ease: 'Sine.easeInOut'
                 });
 
-                // 提示牌选中时保持黄色，否则加绿色tint
+                // 提示牌选中时变绿色，否则加绿色tint
                 if (tileImg.setTint) {
-                    if (tile.getData('hintTint')) {
-                        tileImg.setTint(0xf1c40f);
-                    } else {
-                        tileImg.setTint(0x90ee90);
-                    }
+                    tileImg.setTint(0x90ee90);
                 }
             }
         }
@@ -1406,10 +1402,7 @@ class GameScene extends Phaser.Scene {
             shadowEntry.shadow.setDepth(1999);
         }
 
-        // 提示牌选中时停止摇晃，取消选中时恢复摇晃
-        if (tile.getData('hintTint')) {
-            this.stopHintSwing(tile);
-        }
+        // 提示牌选中时不停止摇晃，保持摇晃
     }
 
     // 取消选中牌的动画效果（缓入缓出缩小）
@@ -1552,6 +1545,10 @@ class GameScene extends Phaser.Scene {
 
                 // 碰撞消除动画，动画结束后执行消除逻辑
                 this.animateCollision(selectedTile, tile, () => {
+                    // 进入匹配动画时停止摇晃
+                    this.stopHintSwing(selectedTile);
+                    this.stopHintSwing(tile);
+
                     selectedTile.setData('matched', true);
                     tile.setData('matched', true);
 
