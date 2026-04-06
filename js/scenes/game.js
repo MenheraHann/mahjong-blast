@@ -2041,6 +2041,52 @@ class GameScene extends Phaser.Scene {
             });
         });
 
+        // 如果是被压住锁定，显示气泡提示
+        if (tile.getData('isCovered')) {
+            const tileImg = tile.list[0];
+            if (tileImg) {
+                // 气泡背景
+                const bubbleWidth = 280;
+                const bubbleHeight = 60;
+                const bubbleX = tileImg.x;
+                const bubbleY = tileImg.y - 70;
+
+                const bubbleBg = this.add.graphics();
+                bubbleBg.fillStyle(0x000000, 0.85);
+                bubbleBg.fillRoundedRect(
+                    bubbleX - bubbleWidth / 2,
+                    bubbleY - bubbleHeight / 2,
+                    bubbleWidth,
+                    bubbleHeight,
+                    12
+                );
+                bubbleBg.setDepth(9999);
+
+                // 气泡文字
+                const bubbleText = this.add.text(bubbleX, bubbleY, '需要移除上面的牌', {
+                    fontSize: '24px',
+                    color: '#ffffff',
+                    fontFamily: 'Arial, sans-serif'
+                }).setOrigin(0.5).setDepth(9999);
+
+                // 1.5秒后气泡消失
+                this.time.delayedCall(1500, () => {
+                    this.tweens.add({
+                        targets: [bubbleBg, bubbleText],
+                        alpha: 0,
+                        scaleX: 0.8,
+                        scaleY: 0.8,
+                        duration: 300,
+                        ease: 'Sine.easeIn',
+                        onComplete: () => {
+                            bubbleBg.destroy();
+                            bubbleText.destroy();
+                        }
+                    });
+                });
+            }
+        }
+
         // 如果是左右夹住锁定，显示红色叉叉在点位左右各一张牌宽度位置
         if (leftBlocked && rightBlocked) {
             const imgScale = tile.getData('imgScale') || 0.8;
