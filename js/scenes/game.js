@@ -958,7 +958,11 @@ class GameScene extends Phaser.Scene {
                 container.setInteractive({ useHandCursor: true });
                 container.on('pointerdown', () => this.onTileClick(container));
 
-                const defaultDepth = layer * 1000 + Math.round(t.row * 100) * 10 + Math.round(t.col * 10);
+                // 深度规则：右压左、下压上
+                // 公式：depth = layer * 10000 + (row + col) * 100
+                // 同层内 row + col 越大（越右、越下）depth 越高
+                // row和col权重相等，保证：右邻牌压左、下邻牌压上、右下角压所有
+                const defaultDepth = layer * 10000 + (Math.round(t.row * 10) + Math.round(t.col * 10)) * 100;
                 container.setDepth(defaultDepth);
                 container.setData('defaultDepth', defaultDepth);
 
@@ -1052,7 +1056,7 @@ class GameScene extends Phaser.Scene {
                 container.setInteractive({ useHandCursor: true });
                 container.on('pointerdown', () => this.onTileClick(container));
 
-                // 默认层级：右压左，下压上
+                // 默认层级：右压左，下压上（col越大越右→越高，row越大越下→越高）
                 const defaultDepth = row * cols + col;
                 container.setDepth(defaultDepth);
                 container.setData('defaultDepth', defaultDepth);
