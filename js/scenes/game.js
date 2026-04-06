@@ -727,42 +727,61 @@ class GameScene extends Phaser.Scene {
         if (tile.getData('matched')) return false;
 
         const layer = tile.getData('layer');
-        const coveredPositions = tile.getData('coveredPositions');
 
         // 如果被上层牌覆盖（压边、正压、压角），则锁定
         if (layer === 0 && tile.getData('isCovered')) return false;
 
-        // 第二层牌始终自由（除非被匹配）
-        if (layer === 1) return true;
+        // 第二层及以上牌始终自由（除非被匹配）
+        if (layer >= 1) return true;
 
-        // 计算牌的左右边界
-        const cols = 7;
-        const rows = 8;
-        const minCol = Math.min(...coveredPositions.map(p => p[1]));
-        const maxCol = Math.max(...coveredPositions.map(p => p[1]));
-        const minRow = Math.min(...coveredPositions.map(p => p[0]));
-        const maxRow = Math.max(...coveredPositions.map(p => p[0]));
+        // 第一层改为按真实牌位置判断左右是否被挡住，兼容 .5 位置
+        const leftBlocked = this.hasSideNeighbor(tile, 'left');
+        const rightBlocked = this.hasSideNeighbor(tile, 'right');
+        return !(leftBlocked && rightBlocked);
+    }
 
-        // 检查左侧是否有相邻的同层牌（所有行都有才算挡住）
-        let leftBlocked = (minCol > 0);
-        for (let r = minRow; r <= maxRow && leftBlocked; r++) {
-            if (!this.hasTileAt(r, minCol - 1, layer)) {
-                leftBlocked = false;
+    // 检查同层是否有牌挡住左右侧，按真实位置判断，兼容 .5 坐标
+    hasSideNeighbor(tile, side) {
+        const layer = tile.getData('layer');
+        const tileW = tile.getData('tileW');
+        const tileH = tile.getData('tileH');
+        const halfW = tileW / 2;
+        const verticalTolerance = tileH * 0.45;
+        const maxGap = tileW * 0.9;
+
+        return this.tiles.some(other => {
+            if (other === tile) return false;
+            if (other.getData('matched')) return false;
+            if (other.getData('layer') !== layer) return false;
+
+            const dx = other.x - tile.x;
+            const dy = Math.abs(other.y - tile.y);
+            if (dy > verticalTolerance) return false;
+
+            if (side === 'left') {
+                return dx < 0 && Math.abs(dx) <= maxGap && Math.abs(dx) >= halfW * 0.35;
             }
-        }
+            return dx > 0 && dx <= maxGap && dx >= halfW * 0.35;
+        });
+    }
 
-        // 检查右侧是否有相邻的同层牌（所有行都有才算挡住）
-        let rightBlocked = (maxCol < cols - 1);
-        for (let r = minRow; r <= maxRow && rightBlocked; r++) {
-            if (!this.hasTileAt(r, maxCol + 1, layer)) {
-                rightBlocked = false;
-            }
-        }
+    // 根据真实位置刷新第一层牌的覆盖状态，兼容 .5 位置
+    refreshCoveredState() {
+        const lowerTiles = this.tiles.filter(t => !t.getData('matched') && t.getData('layer') === 0);
+        const upperTiles = this.tiles.filter(t => !t.getData('matched') && t.getData('layer') > 0);
 
-        // 左右都被挡住 → 锁定
-        if (leftBlocked && rightBlocked) return false;
-
-        return true;
+        lowerTiles.forEach(lower => {
+            const lowerW = lower.getData('tileW');
+            const lowerH = lower.getData('tileH');
+            const covered = upperTiles.some(upper => {
+                const upperW = upper.getData('tileW');
+                const upperH = upper.getData('tileH');
+                const overlapX = Math.abs(upper.x - lower.x) < (lowerW + upperW) / 2 - 6;
+                const overlapY = Math.abs(upper.y - lower.y) < (lowerH + upperH) / 2 - 6;
+                return overlapX && overlapY;
+            });
+            lower.setData('isCovered', covered);
+        });
     }
 
     // 检查指定网格位置在指定层是否有未消除的牌
@@ -773,10 +792,8 @@ class GameScene extends Phaser.Scene {
         if (!cell) return false;
 
         if (layer === 0) {
-            // 第一层：检查 layer1Tile 是否存在且未消除（被覆盖的牌也算物理存在，会挡住邻居）
             return cell.layer1Tile && !cell.layer1Tile.getData('matched');
         } else {
-            // 第二层：检查 layer2Tile 是否存在且未消除
             return cell.layer2Tile && !cell.layer2Tile.getData('matched');
         }
     }
@@ -859,7 +876,124 @@ class GameScene extends Phaser.Scene {
         // 存储计算参数供后续使用
         this.boardParams = { cols, rows, tileSize, tileHeight, startX, startY };
 
-        this.generateRandomLayout();
+        // 检查是否有定制关卡配置
+        const levelConfig = this.loadLevelConfig(this.currentLevel);
+        if (levelConfig) {
+            this.generateLevelLayout(levelConfig);
+        } else {
+            this.generateRandomLayout();
+        }
+    }
+
+    // 加载定制关卡配置
+    loadLevelConfig(level) {
+        const key = `mahjongLevel_${level}`;
+        const saved = localStorage.getItem(key);
+        if (!saved) return null;
+        try {
+            return JSON.parse(saved);
+        } catch (e) {
+            console.error('[游戏] 加载关卡配置失败:', e);
+            return null;
+        }
+    }
+
+    // 根据定制配置生成关卡布局（支持正格/边位/角位）
+    generateLevelLayout(config) {
+        const { tileSize, tileHeight, startX, startY } = this.boardParams;
+        const tiles = config.tiles || [];
+
+        // 为所有位置生成成对的牌面值
+        const allPositions = tiles.map(t => `${t.layer}_${t.row}_${t.col}`);
+        const pairCount = Math.floor(allPositions.length / 2);
+        const types = [];
+        for (let i = 0; i < pairCount; i++) {
+            const type = Math.floor(Math.random() * 34);
+            types.push(type, type);
+        }
+        for (let i = types.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [types[i], types[j]] = [types[j], types[i]];
+        }
+
+        let tileIdx = 0;
+        const layerOffsetX = -10;
+        const layerOffsetY = -12;
+
+        const maxLayer = Math.max(...tiles.map(t => t.layer), 0);
+        for (let layer = 0; layer <= maxLayer; layer++) {
+            const layerTiles = tiles.filter(t => t.layer === layer).sort((a, b) => {
+                if (a.row !== b.row) return a.row - b.row;
+                return a.col - b.col;
+            });
+
+            layerTiles.forEach(t => {
+                const type = types[tileIdx % types.length];
+                const x = startX + t.col * (tileSize - 10) + layer * layerOffsetX;
+                const y = startY + t.row * (tileHeight - 20) + layer * layerOffsetY;
+
+                const container = this.add.container(x, y);
+                const imgKey = `tile_${type % 34}`;
+                const tileImg = this.add.image(0, 0, imgKey);
+                const imgScale = Math.min((tileSize - 2) / 100, (tileHeight - 2) / 138);
+                tileImg.setScale(imgScale);
+
+                if (t.faceDown) {
+                    tileImg.setTexture('tile_00');
+                }
+
+                container.add(tileImg);
+                container.setData('type', type);
+                container.setData('matched', false);
+                container.setData('tileW', tileSize);
+                container.setData('tileH', tileHeight);
+                container.setData('imgScale', imgScale);
+                container.setData('layer', layer);
+                container.setData('coveredPositions', [[t.row, t.col]]);
+                container.setData('isCovered', false);
+                container.setData('isFree', true);
+                container.setData('baseImgScale', imgScale);
+                container.setData('isFaceDown', t.faceDown || false);
+                container.setSize(tileSize, tileHeight);
+                container.setInteractive({ useHandCursor: true });
+                container.on('pointerdown', () => this.onTileClick(container));
+
+                const defaultDepth = layer * 1000 + Math.round(t.row * 100) * 10 + Math.round(t.col * 10);
+                container.setDepth(defaultDepth);
+                container.setData('defaultDepth', defaultDepth);
+
+                this.tiles.push(container);
+
+                const rowIsInt = Number.isInteger(t.row);
+                const colIsInt = Number.isInteger(t.col);
+                if (rowIsInt && colIsInt) {
+                    if (layer === 0) {
+                        this.boardGrid[t.row][t.col].layer1Tile = container;
+                    } else if (layer === 1) {
+                        this.boardGrid[t.row][t.col].layer2Tile = container;
+                    }
+                }
+
+                const shadowImg = this.add.image(x, y, 'tile_shadow');
+                shadowImg.setScale(imgScale);
+                shadowImg.setDepth(layer === 0 ? -1 : 999);
+                shadowImg.setData('origScale', imgScale);
+                this.shadowLayer.push({ shadow: shadowImg, tile: container });
+
+                tileIdx++;
+            });
+        }
+
+        this.refreshCoveredState();
+        this.totalPairs = this.tiles.length / 2;
+        this.remainingPairs = this.totalPairs;
+        this.recalculateAllFreeStatus();
+
+        const animTypes = ['slideLeftRight', 'scaleBottomRight', 'scaleBottomLeft', 'scaleTopRight', 'scaleTopLeft', 'slideDown', 'slideUp'];
+        const animType = animTypes[Math.floor(Math.random() * animTypes.length)];
+        this.playEntryAnimation(animType, () => {
+            this.recalculateAllFreeStatus();
+        });
     }
 
     // 生成自定义关卡布局
@@ -1388,12 +1522,12 @@ class GameScene extends Phaser.Scene {
         // tileW 已在上面声明
 
         // 确保在最上层
-        tileA.setDepth(3000);
-        tileB.setDepth(3000);
+        tileA.setDepth(30000);
+        tileB.setDepth(30000);
         const seA = this.shadowLayer.find(s => s.tile === tileA);
         const seB = this.shadowLayer.find(s => s.tile === tileB);
-        if (seA) seA.shadow.setDepth(2999);
-        if (seB) seB.shadow.setDepth(2999);
+        if (seA) seA.shadow.setDepth(29999);
+        if (seB) seB.shadow.setDepth(29999);
 
         // 阶段1：起飞（330ms，Sine.easeOut）
         this.tweens.add({
@@ -1593,9 +1727,9 @@ class GameScene extends Phaser.Scene {
                 }
             }
         }
-        tile.setDepth(2000);
+        tile.setDepth(20000);
         if (shadowEntry) {
-            shadowEntry.shadow.setDepth(1999);
+            shadowEntry.shadow.setDepth(19999);
         }
 
         // 提示牌选中时不停止摇晃，保持摇晃
@@ -1765,21 +1899,10 @@ class GameScene extends Phaser.Scene {
                         this.clearHint();
                     }
 
-                    // 如果消除的是第二层牌，解锁对应的第一层牌
-                    [selectedTile, tile].forEach(t => {
-                        if (t.getData('layer') === 1) {
-                            const coveredPositions = t.getData('coveredPositions');
-                            coveredPositions.forEach(([r, c]) => {
-                                const cell = this.boardGrid[r][c];
-                                if (cell && cell.layer1Tile) {
-                                    cell.layer1Tile.setData('isCovered', false);
-                                    cell.layer1Tile.setData('isFree', true);
-                                    cell.layer1Tile.setInteractive({ useHandCursor: true });
-                                }
-                                cell.layer2Tile = null;
-                            });
-                        }
-                    });
+                    // 如果消除的是上层牌，刷新第一层覆盖状态
+                    if (selectedTile.getData('layer') > 0 || tile.getData('layer') > 0) {
+                        this.refreshCoveredState();
+                    }
 
                     this.matchedPairs++;
                     this.score += 200;
