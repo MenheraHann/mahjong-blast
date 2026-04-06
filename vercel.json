@@ -1,0 +1,7 @@
+{
+  "name": "lexin-mahjong",
+  "version": 2,
+  "buildCommand": "echo 'No build needed'",
+  "outputDirectory": ".",
+  "devCommand": "echo 'No dev command needed'"
+}

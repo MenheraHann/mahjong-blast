@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:play.google.com)",
+      "WebFetch(domain:apps.apple.com)",
+      "WebFetch(domain:www.pockettactics.com)",
+      "Bash(pdfinfo:*)"
+    ]
+  }
+}
