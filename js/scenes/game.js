@@ -293,7 +293,12 @@ class GameScene extends Phaser.Scene {
         });
 
         this.clearHint();
-        this.smartShuffle();
+        this.recalculateAllFreeStatus();
+
+        // 洗牌后检查是否还有自由配对，没有则重新洗牌
+        if (!this.hasFreePairs()) {
+            this.smartShuffle();
+        }
     }
 
     // 生成第二层牌的布局（基于第一层牌的几何接触关系）
@@ -542,17 +547,17 @@ class GameScene extends Phaser.Scene {
 
         const totalTiles = rows * cols;
 
-        const tileTypes = [];
-        const layer1Pairs = Math.floor(totalTiles / 2);
-        for (let i = 0; i < layer1Pairs; i++) {
-            tileTypes.push(i, i);
+        // 第一层牌类型：先生成，保证偶数对（类型范围0-33，共34种牌）
+        const layer1Count = totalTiles; // 56张
+        const layer1Types = [];
+        for (let i = 0; i < layer1Count / 2; i++) {
+            const type = i % 34; // 0-33循环
+            layer1Types.push(type, type);
         }
-        if (tileTypes.length > totalTiles) {
-            tileTypes.pop();
-        }
-        for (let i = tileTypes.length - 1; i > 0; i--) {
+        // 打乱第一层牌序
+        for (let i = layer1Types.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [tileTypes[i], tileTypes[j]] = [tileTypes[j], tileTypes[i]];
+            [layer1Types[i], layer1Types[j]] = [layer1Types[j], layer1Types[i]];
         }
 
         // 牌面整体居中
@@ -572,9 +577,9 @@ class GameScene extends Phaser.Scene {
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
                 const idx = row * cols + col;
-                if (idx >= tileTypes.length) continue;
+                if (idx >= layer1Types.length) continue;
 
-                const type = tileTypes[idx];
+                const type = layer1Types[idx];
                 const x = startX + col * (tileSize - 10);
                 const y = startY + row * (tileHeight - 20);
 
@@ -621,7 +626,26 @@ class GameScene extends Phaser.Scene {
 
         // 生成并渲染第二层牌
         const layer2Plan = this.generateLayer2();
-        layer2Plan.forEach(item => {
+
+        // 第二层牌也必须成对：生成偶数张牌，每种类型成对
+        const layer2Count = layer2Plan.length;
+        const layer2Types = [];
+        // 生成成对的类型（从34种牌中随机取）
+        for (let i = 0; i < layer2Count / 2; i++) {
+            const type = Math.floor(Math.random() * 34);
+            layer2Types.push(type, type);
+        }
+        // 如果是奇数，补一张（会在后面偶数校验时被移除）
+        if (layer2Count % 2 !== 0) {
+            layer2Types.push(Math.floor(Math.random() * 34));
+        }
+        // 打乱第二层牌序
+        for (let i = layer2Types.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [layer2Types[i], layer2Types[j]] = [layer2Types[j], layer2Types[i]];
+        }
+
+        layer2Plan.forEach((item, idx) => {
             const positions = item.coverage;
 
             // 所有第二层牌尺寸与第一层相同，用 renderRow/renderCol 定位
@@ -635,8 +659,8 @@ class GameScene extends Phaser.Scene {
 
             const container = this.add.container(x, y);
 
-            // 随机分配牌面类型
-            const type = Math.floor(Math.random() * 34);
+            // 从成对的类型列表中取牌面
+            const type = layer2Types[idx];
             const imgKey = `tile_${type % 34}`;
             const tileImg = this.add.image(0, 0, imgKey);
             const imgScale = Math.min((renderW - 2) / 100, (renderH - 2) / 138);
@@ -686,7 +710,7 @@ class GameScene extends Phaser.Scene {
 
         // 更新总对数（确保偶数）
         if (this.tiles.length % 2 !== 0) {
-            // 找到一张第二层牌移除（优先移除正压牌，保留边压和角压）
+            // 找到一张第二层牌移除
             let lastTile = this.tiles.filter(t => t.getData('layer') === 1).pop();
             if (!lastTile) lastTile = this.tiles[this.tiles.length - 1];
 
@@ -1030,50 +1054,56 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    // 获取洗牌后的牌面类型，保持偶数配对
+    // 获取洗牌后的牌面类型，保证每种类型成对出现
     getShuffledTypesForLayer2(unmatchedTiles) {
-        // 分离第一层和第二层牌
-        const layer1Tiles = unmatchedTiles.filter(t => t.getData('layer') === 0);
-        const layer2Tiles = unmatchedTiles.filter(t => t.getData('layer') === 1);
-
         // 收集所有类型
         const allTypes = unmatchedTiles.map(t => t.getData('type'));
 
-        // 随机打乱
-        for (let i = allTypes.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allTypes[i], allTypes[j]] = [allTypes[j], allTypes[i]];
-        }
-
-        // 确保总数为偶数（如果奇数则移除最后一张第二层牌）
-        if (allTypes.length % 2 !== 0 && layer2Tiles.length > 0) {
-            const lastL2 = layer2Tiles[layer2Tiles.length - 1];
-            const idx = unmatchedTiles.indexOf(lastL2);
-            if (idx !== -1) {
-                unmatchedTiles.splice(idx, 1);
-                allTypes.pop();
-                // 解锁被移除牌覆盖的位置
-                lastL2.getData('coveredPositions').forEach(([r, c]) => {
-                    const cell = this.boardGrid[r][c];
-                    if (cell && cell.layer1Tile) {
-                        cell.layer1Tile.setData('isCovered', false);
-                        cell.layer1Tile.setData('isFree', true);
-                        cell.layer1Tile.setInteractive({ useHandCursor: true });
+        // 确保总数为偶数（如果奇数则移除一张第二层牌）
+        if (allTypes.length % 2 !== 0) {
+            const layer2Tiles = unmatchedTiles.filter(t => t.getData('layer') === 1);
+            if (layer2Tiles.length > 0) {
+                const lastL2 = layer2Tiles[layer2Tiles.length - 1];
+                const idx = unmatchedTiles.indexOf(lastL2);
+                if (idx !== -1) {
+                    unmatchedTiles.splice(idx, 1);
+                    allTypes.pop();
+                    // 解锁被移除牌覆盖的位置
+                    lastL2.getData('coveredPositions').forEach(([r, c]) => {
+                        const cell = this.boardGrid[r][c];
+                        if (cell && cell.layer1Tile) {
+                            cell.layer1Tile.setData('isCovered', false);
+                            cell.layer1Tile.setData('isFree', true);
+                            cell.layer1Tile.setInteractive({ useHandCursor: true });
+                        }
+                        cell.layer2Tile = null;
+                    });
+                    // 移除阴影
+                    const shadowEntry = this.shadowLayer.find(s => s.tile === lastL2);
+                    if (shadowEntry) {
+                        shadowEntry.shadow.destroy();
+                        this.shadowLayer = this.shadowLayer.filter(s => s !== shadowEntry);
                     }
-                    cell.layer2Tile = null;
-                });
-                // 移除阴影
-                const shadowEntry = this.shadowLayer.find(s => s.tile === lastL2);
-                if (shadowEntry) {
-                    shadowEntry.shadow.destroy();
-                    this.shadowLayer = this.shadowLayer.filter(s => s !== shadowEntry);
+                    lastL2.destroy();
+                    this.tiles = this.tiles.filter(t => t !== lastL2);
                 }
-                lastL2.destroy();
-                this.tiles = this.tiles.filter(t => t !== lastL2);
             }
         }
 
-        return allTypes;
+        // 重新生成成对类型：每种类型出现偶数次
+        const pairCount = allTypes.length / 2;
+        const newTypes = [];
+        for (let i = 0; i < pairCount; i++) {
+            const type = Math.floor(Math.random() * 34);
+            newTypes.push(type, type);
+        }
+        // 打乱
+        for (let i = newTypes.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [newTypes[i], newTypes[j]] = [newTypes[j], newTypes[i]];
+        }
+
+        return newTypes;
     }
 
     // 检查当前自由牌中是否有可配对的
@@ -1087,21 +1117,28 @@ class GameScene extends Phaser.Scene {
         return Object.values(typeCounts).some(count => count >= 2);
     }
 
-    // 智能洗牌：保证洗完后至少有一对自由牌可配对
+    // 智能洗牌：保证洗完后至少有一对自由牌可配对，且所有牌成对
     smartShuffle() {
         const maxAttempts = 50;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             // 执行一次普通洗牌
             const unmatchedTiles = this.tiles.filter(t => !t.getData('matched'));
-            const allTypes = unmatchedTiles.map(t => t.getData('type'));
 
-            for (let i = allTypes.length - 1; i > 0; i--) {
+            // 重新生成成对类型
+            const pairCount = unmatchedTiles.length / 2;
+            const newTypes = [];
+            for (let i = 0; i < pairCount; i++) {
+                const type = Math.floor(Math.random() * 34);
+                newTypes.push(type, type);
+            }
+            // 打乱
+            for (let i = newTypes.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [allTypes[i], allTypes[j]] = [allTypes[j], allTypes[i]];
+                [newTypes[i], newTypes[j]] = [newTypes[j], newTypes[i]];
             }
 
             unmatchedTiles.forEach((tile, i) => {
-                const newType = allTypes[i];
+                const newType = newTypes[i];
                 tile.setData('type', newType);
                 const tileImg = tile.list[0];
                 if (tileImg && tileImg.setTexture) {
