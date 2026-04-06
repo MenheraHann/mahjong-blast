@@ -620,6 +620,7 @@ class GameScene extends Phaser.Scene {
                 const shadowScale = Math.min((tileSize - 2) / 100, (tileHeight - 2) / 138);
                 shadowImg.setScale(shadowScale);
                 shadowImg.setDepth(-1);
+                shadowImg.setData('origScale', shadowScale);
                 this.shadowLayer.push({ shadow: shadowImg, tile: container });
             }
         }
@@ -694,6 +695,7 @@ class GameScene extends Phaser.Scene {
             const shadowScale = Math.min((renderW - 2) / 100, (renderH - 2) / 138);
             shadowImg.setScale(shadowScale);
             shadowImg.setDepth(999);
+            shadowImg.setData('origScale', shadowScale);
             this.shadowLayer.push({ shadow: shadowImg, tile: container });
 
             // 标记被覆盖的第一层牌
@@ -737,8 +739,283 @@ class GameScene extends Phaser.Scene {
         this.totalPairs = Math.floor(this.tiles.length / 2);
         this.matchText.setText(`${this.totalPairs}`);
 
-        // 初始化自由状态
-        this.recalculateAllFreeStatus();
+        // 入场动画：随机选择一种动画，完成后才初始化自由状态和启用交互
+        const animTypes = ['slideLeftRight', 'scaleBottomRight', 'scaleBottomLeft', 'scaleTopRight', 'scaleTopLeft', 'slideDown', 'slideUp'];
+        const animType = animTypes[Math.floor(Math.random() * animTypes.length)];
+
+        this.playEntryAnimation(animType, () => {
+            this.recalculateAllFreeStatus();
+        });
+    }
+
+    // 入场动画统一入口
+    playEntryAnimation(type, onComplete) {
+        // 动画开始前：所有阴影设为透明
+        this.shadowLayer.forEach(({ shadow }) => {
+            shadow.setAlpha(0);
+        });
+
+        // 动画开始前：先计算所有牌的自由状态，再显示锁定效果
+        this.tiles.forEach(tile => {
+            if (tile.getData('matched')) return;
+            const free = this.isTileFree(tile);
+            tile.setData('isFree', free);
+
+            const tileImg = tile.list[0];
+            if (tileImg && tileImg.setTint) {
+                if (!free) {
+                    tileImg.setTint(0x999999);
+                } else {
+                    tileImg.clearTint();
+                }
+            }
+        });
+
+        if (type === 'slideLeftRight') {
+            this.playSlideEntry(onComplete);
+        } else if (type === 'slideDown' || type === 'slideUp') {
+            this.playVerticalEntry(type, onComplete);
+        } else {
+            this.playScaleEntry(type, onComplete);
+        }
+    }
+
+    // 入场动画：牌按列交替从左右飞入，按行从上到下延迟20ms
+    playSlideEntry(onComplete) {
+        this.isProcessing = true;
+
+        const rowDelay = 20;
+        const duration = 350;
+        const offscreenX = 350;
+        const bounceDist = 15; // 弹性过冲距离（原来的一半）
+
+        const allEntries = this.tiles.map(tile => {
+            const coveredPositions = tile.getData('coveredPositions');
+            const row = coveredPositions[0][0];
+            const col = coveredPositions[0][1];
+            return { tile, row, col, origX: tile.x, origY: tile.y };
+        });
+
+        let maxEndTime = 0;
+
+        allEntries.forEach(entry => {
+            const { tile, row, col, origX } = entry;
+
+            const fromLeft = col % 2 === 0;
+            const startX = fromLeft ? -offscreenX : this.w + offscreenX;
+            const overshootX = fromLeft ? origX + bounceDist : origX - bounceDist;
+
+            const delay = row * rowDelay;
+            const endTime = delay + duration + 80;
+            if (endTime > maxEndTime) maxEndTime = endTime;
+
+            tile.x = startX;
+
+            const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+            if (shadowEntry) {
+                shadowEntry.shadow.x = startX;
+            }
+
+            this.time.delayedCall(delay, () => {
+                // 阶段1：飞到过冲位置
+                this.tweens.add({
+                    targets: tile,
+                    x: overshootX,
+                    duration: duration,
+                    ease: 'Sine.easeOut',
+                    onUpdate: () => {
+                        if (shadowEntry) {
+                            shadowEntry.shadow.x = tile.x;
+                        }
+                    },
+                    onComplete: () => {
+                        // 阶段2：弹回终点
+                        this.tweens.add({
+                            targets: tile,
+                            x: origX,
+                            duration: 80,
+                            ease: 'Sine.easeInOut',
+                            onUpdate: () => {
+                                if (shadowEntry) {
+                                    shadowEntry.shadow.x = tile.x;
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+        });
+
+        this.playShadowFadeIn(maxEndTime, onComplete);
+    }
+
+    // 入场动画：从角落弹性放大出现
+    // corner取值：'scaleBottomRight', 'scaleBottomLeft', 'scaleTopRight', 'scaleTopLeft'
+    playScaleEntry(corner, onComplete) {
+        this.isProcessing = true;
+
+        const rowDelay = 15;
+        const duration = 350;
+        const bounceScale = 1.07; // 弹性过冲缩放（原来的一半，原来是1.14左右）
+
+        // 根据角落类型确定距离计算方向
+        // 每张牌到角落的距离 = |row - cornerRow| + |col - cornerCol|
+        let cornerRow, cornerCol;
+        switch (corner) {
+            case 'scaleBottomRight': cornerRow = 7; cornerCol = 6; break;
+            case 'scaleBottomLeft':  cornerRow = 7; cornerCol = 0; break;
+            case 'scaleTopRight':    cornerRow = 0; cornerCol = 6; break;
+            case 'scaleTopLeft':     cornerRow = 0; cornerCol = 0; break;
+        }
+
+        let maxEndTime = 0;
+
+        this.tiles.forEach(tile => {
+            const coveredPositions = tile.getData('coveredPositions');
+            const row = coveredPositions[0][0];
+            const col = coveredPositions[0][1];
+            const dist = Math.abs(row - cornerRow) + Math.abs(col - cornerCol);
+
+            // 延迟按距离计算：离角落越远越晚出现
+            const delay = dist * rowDelay;
+            const endTime = delay + duration + 80;
+            if (endTime > maxEndTime) maxEndTime = endTime;
+
+            // 初始缩放为0
+            const tileImg = tile.list[0];
+            if (tileImg) {
+                const origScale = tile.getData('baseImgScale');
+                const overshootScale = origScale * bounceScale;
+                tileImg.setScale(0);
+
+                const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+                if (shadowEntry) {
+                    shadowEntry.shadow.setScale(0);
+                }
+
+                this.time.delayedCall(delay, () => {
+                    // 阶段1：放大到过冲
+                    this.tweens.add({
+                        targets: tileImg,
+                        scaleX: overshootScale,
+                        scaleY: overshootScale,
+                        duration: duration,
+                        ease: 'Sine.easeOut',
+                        onUpdate: () => {
+                            if (shadowEntry) {
+                                shadowEntry.shadow.setScale(tileImg.scaleX / origScale * shadowEntry.shadow.getData('origScale'));
+                            }
+                        },
+                        onComplete: () => {
+                            // 阶段2：弹回原始大小
+                            this.tweens.add({
+                                targets: tileImg,
+                                scaleX: origScale,
+                                scaleY: origScale,
+                                duration: 80,
+                                ease: 'Sine.easeInOut',
+                                onUpdate: () => {
+                                    if (shadowEntry) {
+                                        shadowEntry.shadow.setScale(tileImg.scaleX / origScale * shadowEntry.shadow.getData('origScale'));
+                                    }
+                                }
+                            });
+                        }
+                    });
+                });
+            }
+        });
+
+        this.playShadowFadeIn(maxEndTime, onComplete);
+    }
+
+    // 入场动画：从上到下或从下到上飞入
+    playVerticalEntry(type, onComplete) {
+        this.isProcessing = true;
+
+        const rowDelay = 20;
+        const duration = 350;
+        const offscreenY = 400;
+        const bounceDist = 15; // 弹性过冲距离（原来的一半）
+
+        const allEntries = this.tiles.map(tile => {
+            const coveredPositions = tile.getData('coveredPositions');
+            const row = coveredPositions[0][0];
+            const col = coveredPositions[0][1];
+            return { tile, row, col, origX: tile.x, origY: tile.y };
+        });
+
+        let maxEndTime = 0;
+
+        allEntries.forEach(entry => {
+            const { tile, row, origY } = entry;
+
+            // 从上到下：从屏幕上方飞入；从下到上：从屏幕下方飞入
+            const fromTop = type === 'slideDown';
+            const startY = fromTop ? -offscreenY : this.h + offscreenY;
+            const overshootY = fromTop ? origY + bounceDist : origY - bounceDist;
+
+            const delay = row * rowDelay;
+            const endTime = delay + duration + 80;
+            if (endTime > maxEndTime) maxEndTime = endTime;
+
+            tile.y = startY;
+
+            const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+            if (shadowEntry) {
+                shadowEntry.shadow.y = startY;
+            }
+
+            this.time.delayedCall(delay, () => {
+                // 阶段1：飞到过冲位置
+                this.tweens.add({
+                    targets: tile,
+                    y: overshootY,
+                    duration: duration,
+                    ease: 'Sine.easeOut',
+                    onUpdate: () => {
+                        if (shadowEntry) {
+                            shadowEntry.shadow.y = tile.y;
+                        }
+                    },
+                    onComplete: () => {
+                        // 阶段2：弹回终点
+                        this.tweens.add({
+                            targets: tile,
+                            y: origY,
+                            duration: 80,
+                            ease: 'Sine.easeInOut',
+                            onUpdate: () => {
+                                if (shadowEntry) {
+                                    shadowEntry.shadow.y = tile.y;
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+        });
+
+        this.playShadowFadeIn(maxEndTime, onComplete);
+    }
+
+    // 阴影渐显 + 回调
+    playShadowFadeIn(maxEndTime, onComplete) {
+        this.time.delayedCall(maxEndTime + 50, () => {
+            this.shadowLayer.forEach(({ shadow }) => {
+                this.tweens.add({
+                    targets: shadow,
+                    alpha: 1,
+                    duration: 300,
+                    ease: 'Sine.easeOut'
+                });
+            });
+
+            this.time.delayedCall(300, () => {
+                this.isProcessing = false;
+                if (onComplete) onComplete();
+            });
+        });
     }
 
     // 碰撞消除动画：起飞 → 靠近 → 缩小消失
