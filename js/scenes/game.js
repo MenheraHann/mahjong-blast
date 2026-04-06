@@ -33,6 +33,8 @@ class GameScene extends Phaser.Scene {
         tileFiles.forEach((num, idx) => {
             this.load.image(`tile_${idx}`, `assets/pixelMajong/${String(num).padStart(2, '0')}.png`);
         });
+        // 加载暗扣牌背
+        this.load.image('tile_00', 'assets/pixelMajong/00.png');
         // 加载阴影素材
         this.load.image('tile_shadow', 'assets/pixelMajong/shadow.png');
     }
@@ -545,6 +547,31 @@ class GameScene extends Phaser.Scene {
         const tileHeight = Math.round(tileSize / tileRatio);
         const gap = 0;
 
+        // 牌面整体居中
+        const actualBoardW = cols * tileSize + (cols - 1) * (-10);
+        const actualBoardH = rows * tileHeight + (rows - 1) * (-20);
+        const startX = (this.w - actualBoardW) / 2 + tileSize / 2;
+        const startY = topBarH + (this.h - topBarH - bottomBarH) / 2 - actualBoardH / 2 + tileHeight / 2;
+
+        this.tiles = [];
+        this.shadowLayer = []; // 独立的阴影层
+
+        // 初始化7x8网格
+        this.boardGrid = Array.from({length: rows}, () =>
+            Array.from({length: cols}, () => ({ layer1Tile: null, layer2Tile: null }))
+        );
+
+        // 存储计算参数供后续使用
+        this.boardParams = { cols, rows, tileSize, tileHeight, startX, startY };
+
+        this.generateRandomLayout();
+    }
+
+    // 生成自定义关卡布局
+    // 生成随机关卡布局（原有逻辑）
+    generateRandomLayout() {
+        const { cols, rows, tileSize, tileHeight, startX, startY } = this.boardParams;
+
         const totalTiles = rows * cols;
 
         // 第一层牌类型：先生成，保证偶数对（类型范围0-33，共34种牌）
@@ -559,20 +586,6 @@ class GameScene extends Phaser.Scene {
             const j = Math.floor(Math.random() * (i + 1));
             [layer1Types[i], layer1Types[j]] = [layer1Types[j], layer1Types[i]];
         }
-
-        // 牌面整体居中
-        const actualBoardW = cols * tileSize + (cols - 1) * (-10);
-        const actualBoardH = rows * tileHeight + (rows - 1) * (-20);
-        const startX = (this.w - actualBoardW) / 2 + tileSize / 2;
-        const startY = topBarH + (this.h - topBarH - bottomBarH) / 2 - actualBoardH / 2 + tileHeight / 2;
-
-        this.tiles = [];
-        this.shadowLayer = []; // 独立的阴影层
-
-        // 初始化7x8网格
-        this.boardGrid = Array.from({length: rows}, () =>
-            Array.from({length: cols}, () => ({ layer1Tile: null, layer2Tile: null }))
-        );
 
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
@@ -602,6 +615,9 @@ class GameScene extends Phaser.Scene {
                 container.setData('isCovered', false);
                 container.setData('isFree', true);
                 container.setData('baseImgScale', imgScale);
+
+                // 暗扣标记（后续随机分配）
+                container.setData('isFaceDown', false);
 
                 container.setSize(tileSize, tileHeight);
                 container.setInteractive({ useHandCursor: true });
@@ -739,12 +755,36 @@ class GameScene extends Phaser.Scene {
         this.totalPairs = Math.floor(this.tiles.length / 2);
         this.matchText.setText(`${this.totalPairs}`);
 
+        // 随机分配暗扣牌（保证偶数张，以便配对消除）
+        this.assignFaceDownTiles();
+
         // 入场动画：随机选择一种动画，完成后才初始化自由状态和启用交互
         const animTypes = ['slideLeftRight', 'scaleBottomRight', 'scaleBottomLeft', 'scaleTopRight', 'scaleTopLeft', 'slideDown', 'slideUp'];
         const animType = animTypes[Math.floor(Math.random() * animTypes.length)];
 
         this.playEntryAnimation(animType, () => {
             this.recalculateAllFreeStatus();
+        });
+    }
+
+    // 随机分配暗扣牌
+    assignFaceDownTiles() {
+        // 随机数量：总牌数的 1/6 到 1/3，保证偶数
+        const minCount = Math.floor(this.tiles.length / 6);
+        const maxCount = Math.floor(this.tiles.length / 3);
+        let faceDownCount = minCount + Math.floor(Math.random() * (maxCount - minCount + 1));
+        if (faceDownCount % 2 !== 0) faceDownCount++; // 保证偶数
+
+        // 随机选择牌设为暗扣
+        const shuffled = [...this.tiles].sort(() => Math.random() - 0.5);
+        const faceDownTiles = shuffled.slice(0, faceDownCount);
+
+        faceDownTiles.forEach(tile => {
+            tile.setData('isFaceDown', true);
+            const tileImg = tile.list[0];
+            if (tileImg) {
+                tileImg.setTexture('tile_00');
+            }
         });
     }
 
@@ -1155,22 +1195,93 @@ class GameScene extends Phaser.Scene {
     }
     animateSelectTile(tile) {
         const tileImg = tile.list[0];
-        if (tileImg && tileImg.setTint) {
-            tileImg.setTint(0x90ee90);
-        }
+        const isFaceDown = tile.getData('isFaceDown');
+        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+        const shadowImg = shadowEntry ? shadowEntry.shadow : null;
+
         if (tileImg) {
             tileImg.setOrigin(0.5);
-            const targetScale = tile.getData('baseImgScale') * 1.15;
-            this.tweens.add({
-                targets: tileImg,
-                scaleX: targetScale,
-                scaleY: targetScale,
-                duration: 150,
-                ease: 'Sine.easeInOut'
-            });
+
+            if (isFaceDown) {
+                // 暗扣牌：先水平缩小到0，换正面图，再水平放大
+                const faceTexture = `tile_${tile.getData('type') % 34}`;
+                const targetScale = tile.getData('baseImgScale') * 1.15;
+
+                // 第一阶段：水平缩小到0
+                this.tweens.add({
+                    targets: tileImg,
+                    scaleX: 0,
+                    duration: 120,
+                    ease: 'Sine.easeIn',
+                    onComplete: () => {
+                        // 换正面图
+                        tileImg.setTexture(faceTexture);
+                        // 第二阶段：水平放大到目标
+                        this.tweens.add({
+                            targets: tileImg,
+                            scaleX: targetScale,
+                            duration: 120,
+                            ease: 'Sine.easeOut'
+                        });
+                    }
+                });
+                // 垂直缩放正常放大
+                this.tweens.add({
+                    targets: tileImg,
+                    scaleY: targetScale,
+                    duration: 240,
+                    ease: 'Sine.easeInOut'
+                });
+
+                // 阴影同步水平翻转
+                if (shadowImg) {
+                    shadowImg.setOrigin(0.5);
+                    const shadowBaseScale = shadowImg.getData('origScale');
+                    const shadowTarget = shadowBaseScale * 1.15;
+
+                    this.tweens.add({
+                        targets: shadowImg,
+                        scaleX: 0,
+                        duration: 120,
+                        ease: 'Sine.easeIn',
+                        onComplete: () => {
+                            this.tweens.add({
+                                targets: shadowImg,
+                                scaleX: shadowTarget,
+                                duration: 120,
+                                ease: 'Sine.easeOut'
+                            });
+                        }
+                    });
+                    this.tweens.add({
+                        targets: shadowImg,
+                        scaleY: shadowTarget,
+                        duration: 240,
+                        ease: 'Sine.easeInOut'
+                    });
+                }
+
+                // 暗扣牌翻正后加绿色tint
+                if (tileImg.setTint) {
+                    tileImg.setTint(0x90ee90);
+                }
+            } else {
+                // 普通牌：正常放大
+                const targetScale = tile.getData('baseImgScale') * 1.15;
+                this.tweens.add({
+                    targets: tileImg,
+                    scaleX: targetScale,
+                    scaleY: targetScale,
+                    duration: 150,
+                    ease: 'Sine.easeInOut'
+                });
+
+                if (tileImg.setTint) {
+                    tileImg.setTint(0x90ee90);
+                }
+            }
         }
         tile.setDepth(2000);
-        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
         if (shadowEntry) {
             shadowEntry.shadow.setDepth(1999);
         }
@@ -1179,18 +1290,81 @@ class GameScene extends Phaser.Scene {
     // 取消选中牌的动画效果（缓入缓出缩小）
     animateDeselectTile(tile) {
         const tileImg = tile.list[0];
+        const isFaceDown = tile.getData('isFaceDown');
+        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
+        const shadowImg = shadowEntry ? shadowEntry.shadow : null;
+
         if (tileImg) {
             tileImg.setOrigin(0.5);
-            const targetScale = tile.getData('imgScale');
-            this.tweens.add({
-                targets: tileImg,
-                scaleX: targetScale,
-                scaleY: targetScale,
-                duration: 150,
-                ease: 'Sine.easeInOut'
-            });
-            // 恢复 tint：锁定牌灰色，提示牌黄色，自由牌清除
-            if (!tile.getData('isFree')) {
+
+            if (isFaceDown) {
+                // 暗扣牌：水平缩小到0，换回00背图，再水平放大
+                const targetScale = tile.getData('imgScale');
+
+                this.tweens.add({
+                    targets: tileImg,
+                    scaleX: 0,
+                    duration: 120,
+                    ease: 'Sine.easeIn',
+                    onComplete: () => {
+                        tileImg.setTexture('tile_00');
+                        this.tweens.add({
+                            targets: tileImg,
+                            scaleX: targetScale,
+                            duration: 120,
+                            ease: 'Sine.easeOut'
+                        });
+                    }
+                });
+                this.tweens.add({
+                    targets: tileImg,
+                    scaleY: targetScale,
+                    duration: 240,
+                    ease: 'Sine.easeInOut'
+                });
+
+                // 阴影同步水平翻转回原始
+                if (shadowImg) {
+                    shadowImg.setOrigin(0.5);
+                    const shadowBaseScale = shadowImg.getData('origScale');
+
+                    this.tweens.add({
+                        targets: shadowImg,
+                        scaleX: 0,
+                        duration: 120,
+                        ease: 'Sine.easeIn',
+                        onComplete: () => {
+                            this.tweens.add({
+                                targets: shadowImg,
+                                scaleX: shadowBaseScale,
+                                duration: 120,
+                                ease: 'Sine.easeOut'
+                            });
+                        }
+                    });
+                    this.tweens.add({
+                        targets: shadowImg,
+                        scaleY: shadowBaseScale,
+                        duration: 240,
+                        ease: 'Sine.easeInOut'
+                    });
+                }
+            } else {
+                // 普通牌：正常缩小
+                const targetScale = tile.getData('imgScale');
+                this.tweens.add({
+                    targets: tileImg,
+                    scaleX: targetScale,
+                    scaleY: targetScale,
+                    duration: 150,
+                    ease: 'Sine.easeInOut'
+                });
+            }
+
+            // 恢复 tint：暗扣牌清除绿色tint，锁定牌灰色，提示牌黄色，自由牌清除
+            if (isFaceDown) {
+                tileImg.clearTint();
+            } else if (!tile.getData('isFree')) {
                 tileImg.setTint(0x999999);
             } else if (tile.getData('hintTint')) {
                 tileImg.setTint(0xf1c40f);
@@ -1201,7 +1375,6 @@ class GameScene extends Phaser.Scene {
         tile.setDepth(tile.getData('defaultDepth'));
 
         // 阴影恢复该层的阴影层
-        const shadowEntry = this.shadowLayer.find(s => s.tile === tile);
         if (shadowEntry) {
             const layer = tile.getData('layer');
             shadowEntry.shadow.setDepth(layer === 0 ? -1 : 999);
@@ -1311,6 +1484,13 @@ class GameScene extends Phaser.Scene {
 
     resetTileState(tile) {
         this.clearTileSelection(tile);
+        // 暗扣牌恢复背面
+        if (tile.getData('isFaceDown')) {
+            const tileImg = tile.list[0];
+            if (tileImg && tileImg.setTexture) {
+                tileImg.setTexture('tile_00');
+            }
+        }
         // 恢复锁定蒙版（如果被锁定）
         if (!tile.getData('isFree')) {
             const tileImg = tile.list[0];
@@ -1419,7 +1599,10 @@ class GameScene extends Phaser.Scene {
                 tile.setData('type', newType);
                 const tileImg = tile.list[0];
                 if (tileImg && tileImg.setTexture) {
-                    tileImg.setTexture(`tile_${newType % 34}`);
+                    // 暗扣牌洗牌后保持背面，否则更新正面
+                    if (!tile.getData('isFaceDown')) {
+                        tileImg.setTexture(`tile_${newType % 34}`);
+                    }
                 }
                 tile.setData('hintTint', false);
                 this.clearTileSelection(tile);
