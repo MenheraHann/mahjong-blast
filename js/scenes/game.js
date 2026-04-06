@@ -285,13 +285,76 @@ class GameScene extends Phaser.Scene {
                 tileImg.setTint(0xf1c40f); // 黄色蒙版
             }
             tile.setData('hintTint', true);
+
+            // 提示牌钟摆摇晃动画：每3秒摇一次
+            this.startHintSwing(tile);
         });
         this.hintTiles = pair;
+    }
+
+    // 提示牌钟摆摇晃效果
+    startHintSwing(tile) {
+        const tileImg = tile.list[0];
+        if (!tileImg) return;
+
+        const swingTween = this.tweens.add({
+            targets: tileImg,
+            angle: { from: -6, to: 6 },
+            duration: 200,
+            ease: 'Sine.easeInOut',
+            yoyo: true,
+            repeat: 2, // 摇3次（-6→6→-6→6→-6）
+            onComplete: () => {
+                tileImg.setAngle(0);
+            }
+        });
+        tile.setData('hintSwingTween', swingTween);
+
+        // 每3秒重复摇晃
+        const timer = this.time.addEvent({
+            delay: 3000,
+            callback: () => {
+                if (!tile.getData('hintTint') || tile.getData('matched')) {
+                    timer.remove();
+                    return;
+                }
+                const tw = this.tweens.add({
+                    targets: tileImg,
+                    angle: { from: -6, to: 6 },
+                    duration: 200,
+                    ease: 'Sine.easeInOut',
+                    yoyo: true,
+                    repeat: 2,
+                    onComplete: () => {
+                        tileImg.setAngle(0);
+                    }
+                });
+                tile.setData('hintSwingTween', tw);
+            },
+            loop: true
+        });
+        tile.setData('hintSwingTimer', timer);
+    }
+
+    // 停止提示牌摇晃
+    stopHintSwing(tile) {
+        const swingTween = tile.getData('hintSwingTween');
+        if (swingTween) {
+            this.tweens.killTweensOf(tile.list[0]);
+            if (tile.list[0]) tile.list[0].setAngle(0);
+        }
+        const timer = tile.getData('hintSwingTimer');
+        if (timer) {
+            timer.remove();
+        }
+        tile.setData('hintSwingTween', null);
+        tile.setData('hintSwingTimer', null);
     }
 
     clearHint() {
         this.hintTiles.forEach(tile => {
             tile.setData('hintTint', false);
+            this.stopHintSwing(tile);
             // 如果牌未被选中，清除黄色蒙版
             if (!this.selectedTiles.includes(tile)) {
                 const tileImg = tile.list[0];
@@ -1312,6 +1375,11 @@ class GameScene extends Phaser.Scene {
         if (shadowEntry) {
             shadowEntry.shadow.setDepth(1999);
         }
+
+        // 提示牌选中时停止摇晃，取消选中时恢复摇晃
+        if (tile.getData('hintTint')) {
+            this.stopHintSwing(tile);
+        }
     }
 
     // 取消选中牌的动画效果（缓入缓出缩小）
@@ -1405,6 +1473,11 @@ class GameScene extends Phaser.Scene {
         if (shadowEntry) {
             const layer = tile.getData('layer');
             shadowEntry.shadow.setDepth(layer === 0 ? -1 : 999);
+        }
+
+        // 提示牌取消选中时恢复摇晃
+        if (tile.getData('hintTint')) {
+            this.startHintSwing(tile);
         }
     }
 
