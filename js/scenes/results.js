@@ -14,6 +14,7 @@ class ResultsScene extends Phaser.Scene {
     preload() {
         this.load.svg('icon-trophy', 'assets/icons/trophy.svg');
         this.load.svg('icon-fail', 'assets/icons/fail.svg');
+        this.load.audio('sfx-button', 'assets/wav/按钮点击.WAV');
     }
 
     create() {
@@ -47,6 +48,7 @@ class ResultsScene extends Phaser.Scene {
                 }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
                 nextBtn.on('pointerdown', () => {
+                    this.sound.play('sfx-button');
                     this.scene.start('GameScene', { level: this.level + 1 });
                 });
             } else {
@@ -73,6 +75,7 @@ class ResultsScene extends Phaser.Scene {
             }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
             retryBtn.on('pointerdown', () => {
+                this.sound.play('sfx-button');
                 this.scene.start('GameScene', { level: this.level });
             });
         }
@@ -86,6 +89,7 @@ class ResultsScene extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         homeBtn.on('pointerdown', () => {
+            this.sound.play('sfx-button');
             this.scene.start('HomeScene');
         });
 

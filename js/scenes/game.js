@@ -47,6 +47,8 @@ class GameScene extends Phaser.Scene {
         this.load.audio('sfx-collision', 'assets/wav/碰撞音效.WAV');
         this.load.audio('sfx-hint', 'assets/wav/提示.WAV');
         this.load.audio('sfx-shuffle', 'assets/wav/重新排列.WAV');
+        this.load.audio('sfx-start', 'assets/wav/开局音效.WAV');
+        this.load.audio('sfx-button', 'assets/wav/按钮点击.WAV');
     }
 
     create() {
@@ -75,6 +77,7 @@ class GameScene extends Phaser.Scene {
         // 1. 返回按钮
         const backBtn = this.add.image(30, topY, 'icon-back').setScale(0.4).setInteractive({ useHandCursor: true });
         backBtn.on('pointerdown', () => {
+            this.sound.play('sfx-button');
             this.showConfirmDialog('确定要返回主菜单吗？', () => {
                 this.scene.start('HomeScene');
             });
@@ -119,6 +122,7 @@ class GameScene extends Phaser.Scene {
         // 5. 菜单按钮
         const menuBtn = this.add.image(this.w - 35, topY, 'icon-menu').setScale(0.45).setInteractive({ useHandCursor: true });
         menuBtn.on('pointerdown', () => {
+            this.sound.play('sfx-button');
             this.showMenu();
         });
     }
@@ -145,6 +149,7 @@ class GameScene extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
 
         confirmBtn.on('pointerdown', () => {
+            this.sound.play('sfx-button');
             this.destroyDialog(overlay, dialogBg, msgText, confirmBtn, cancelBtn);
             onConfirm();
         });
@@ -157,6 +162,7 @@ class GameScene extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
 
         cancelBtn.on('pointerdown', () => {
+            this.sound.play('sfx-button');
             this.destroyDialog(overlay, dialogBg, msgText, confirmBtn, cancelBtn);
         });
     }
@@ -182,6 +188,7 @@ class GameScene extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
 
         restartBtn.on('pointerdown', () => {
+            this.sound.play('sfx-button');
             this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2);
             this.scene.restart({ level: this.currentLevel });
         });
@@ -194,6 +201,7 @@ class GameScene extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(5001);
 
         menuBtn2.on('pointerdown', () => {
+            this.sound.play('sfx-button');
             this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2);
             this.scene.start('HomeScene');
         });
@@ -1057,6 +1065,9 @@ class GameScene extends Phaser.Scene {
 
     // 入场动画统一入口
     playEntryAnimation(type, onComplete) {
+        // 播放开局音效
+        this.sound.play('sfx-start');
+
         // 动画开始前：所有阴影设为透明
         this.shadowLayer.forEach(({ shadow }) => {
             shadow.setAlpha(0);
@@ -1337,10 +1348,15 @@ class GameScene extends Phaser.Scene {
         const cy = (ay + by) / 2;
 
         // 判断左右关系：x小的在左，偏移负；x大的在右，偏移正
-        const offset = 200;
+        const tileW = tileA.getData('tileW');
+        const halfTile = tileW / 2;
+        const maxOffset = 200;
+        // 向左偏移不能超过左边缘，向右偏移不能超过右边缘
+        const leftOffset = Math.min(maxOffset, cx - halfTile);
+        const rightOffset = Math.min(maxOffset, this.w - cx - halfTile);
         const aIsLeft = ax <= bx;
-        const aOffX = aIsLeft ? -offset : offset;
-        const bOffX = aIsLeft ? offset : -offset;
+        const aOffX = aIsLeft ? -leftOffset : rightOffset;
+        const bOffX = aIsLeft ? rightOffset : -leftOffset;
 
         // 起飞目标位置（碰撞点两侧）
         const aFlyX = cx + aOffX;
@@ -1349,7 +1365,7 @@ class GameScene extends Phaser.Scene {
         const bFlyY = cy;
 
         // 牌的尺寸（用于计算接触点）
-        const tileW = tileA.getData('tileW');
+        // tileW 已在上面声明
 
         // 确保在最上层
         tileA.setDepth(3000);

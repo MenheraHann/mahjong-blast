@@ -5,6 +5,10 @@ class HomeScene extends Phaser.Scene {
         super({ key: 'HomeScene' });
     }
 
+    preload() {
+        this.load.audio('sfx-button', 'assets/wav/按钮点击.WAV');
+    }
+
     create() {
         const w = this.cameras.main.width;
         const h = this.cameras.main.height;
@@ -29,6 +33,7 @@ class HomeScene extends Phaser.Scene {
 
         startBtn.setInteractive({ useHandCursor: true });
         startBtn.on('pointerdown', () => {
+            this.sound.play('sfx-button');
             this.scene.start('GameScene', { level: 1 });
         });
 
@@ -44,6 +49,7 @@ class HomeScene extends Phaser.Scene {
 
             continueBtn.setInteractive({ useHandCursor: true });
             continueBtn.on('pointerdown', () => {
+                this.sound.play('sfx-button');
                 this.scene.start('GameScene', { level: parseInt(savedLevel) });
             });
         }
