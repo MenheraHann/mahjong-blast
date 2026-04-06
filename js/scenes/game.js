@@ -45,6 +45,8 @@ class GameScene extends Phaser.Scene {
         this.load.audio('sfx-click03', 'assets/wav/点击03.WAV');
         this.load.audio('sfx-putdown', 'assets/wav/放下.WAV');
         this.load.audio('sfx-collision', 'assets/wav/碰撞音效.WAV');
+        this.load.audio('sfx-hint', 'assets/wav/提示.WAV');
+        this.load.audio('sfx-shuffle', 'assets/wav/重新排列.WAV');
     }
 
     create() {
@@ -239,6 +241,9 @@ class GameScene extends Phaser.Scene {
         if (this.hintCount <= 0) return;
         if (this.hintTiles.length > 0) return;
 
+        // 播放提示音效
+        this.sound.play('sfx-hint');
+
         const unmatched = this.tiles.filter(t => !t.getData('matched'));
         const freeTiles = unmatched.filter(t => this.isTileFree(t));
         let pair = null;
@@ -407,6 +412,9 @@ class GameScene extends Phaser.Scene {
         // 禁用所有牌的交互
         unmatchedTiles.forEach(t => t.disableInteractive());
         this.isProcessing = true;
+
+        // 播放重新排列音效
+        this.sound.play('sfx-shuffle');
 
         const centerX = this.w / 2;
         const centerY = this.h / 2;
@@ -1698,12 +1706,22 @@ class GameScene extends Phaser.Scene {
                 clearGreen(selectedTile);
                 clearGreen(tile);
 
+                // 碰撞前清除提示状态（黄色+摇晃）
+                this.stopHintSwing(selectedTile);
+                this.stopHintSwing(tile);
+                [selectedTile, tile].forEach(t => {
+                    t.setData('hintTint', false);
+                    const img = t.list[0];
+                    if (img && img.clearTint) {
+                        img.clearTint();
+                    }
+                });
+                // 重置角度防止摇晃残留
+                selectedTile.list[0].setAngle(0);
+                tile.list[0].setAngle(0);
+
                 // 碰撞消除动画，动画结束后执行消除逻辑
                 this.animateCollision(selectedTile, tile, () => {
-                    // 进入匹配动画时停止摇晃
-                    this.stopHintSwing(selectedTile);
-                    this.stopHintSwing(tile);
-
                     selectedTile.setData('matched', true);
                     tile.setData('matched', true);
 
