@@ -11,8 +11,8 @@ class EditorScene extends Phaser.Scene {
         this.tool = 'faceUp';
         this.mirror = 'none';
         this.tiles = [];
-        this.gridCols = 12;
-        this.gridRows = 14;
+        this.gridCols = 11;  // col 0-10，只用偶数位
+        this.gridRows = 13;  // row 0-12，只用偶数位
     }
 
     preload() {
@@ -294,7 +294,7 @@ class EditorScene extends Phaser.Scene {
 
     canPlace(row, col, layer) {
         if (layer === 0) return true;
-        return this.hasTileAt(row, col, layer - 1, layer - 1);
+        return this.hasTileAt(row, col, layer - 1);
     }
 
     canRemove(row, col, layer) {
@@ -303,8 +303,8 @@ class EditorScene extends Phaser.Scene {
 
     getMirror(row, col) {
         if (this.mirror === 'none') return null;
-        if (this.mirror === 'horizontal') return { row, col: 11 - col };
-        if (this.mirror === 'vertical') return { row: 13 - row, col };
+        if (this.mirror === 'horizontal') return { row, col: 10 - col };
+        if (this.mirror === 'vertical') return { row: 12 - row, col };
         return null;
     }
 
