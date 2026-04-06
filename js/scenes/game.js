@@ -90,7 +90,7 @@ class GameScene extends Phaser.Scene {
         const topY = 45;
 
         // 1. 返回按钮
-        const backBtn = this.add.image(30, topY, 'icon-back').setScale(0.4).setInteractive({ useHandCursor: true });
+        const backBtn = this.add.image(30, topY, 'icon-back').setScale(0.7).setInteractive({ useHandCursor: true });
         backBtn.on('pointerdown', () => {
             this.sound.play('sfx-button');
             this.showConfirmDialog('确定要返回主菜单吗？', () => {
@@ -155,7 +155,7 @@ class GameScene extends Phaser.Scene {
         this.matchText.y = groupY + 12;
 
         // 5. 菜单按钮
-        const menuBtn = this.add.image(this.w - 35, topY, 'icon-menu').setScale(0.45).setInteractive({ useHandCursor: true });
+        const menuBtn = this.add.image(this.w - 35, topY, 'icon-menu').setScale(0.75).setInteractive({ useHandCursor: true });
         menuBtn.on('pointerdown', () => {
             this.sound.play('sfx-button');
             this.showMenu();
@@ -253,7 +253,7 @@ class GameScene extends Phaser.Scene {
         this.add.rectangle(this.w / 2, bottomY, this.w, 90, 0x2c3e50).setOrigin(0.5);
 
         // 重新洗牌按钮
-        this.shuffleBtn = this.add.image(this.w / 2 - 100, bottomY, 'icon-shuffle').setScale(0.6).setInteractive({ useHandCursor: true });
+        this.shuffleBtn = this.add.image(this.w / 2 - 100, bottomY, 'icon-shuffle').setScale(0.9).setInteractive({ useHandCursor: true });
         this.shuffleCountText = this.add.text(this.w / 2 - 80, bottomY - 25, `${this.shuffleCount}`, {
             fontSize: '16px',
             color: '#ffffff',
@@ -265,7 +265,7 @@ class GameScene extends Phaser.Scene {
         });
 
         // 提示按钮
-        this.hintBtn = this.add.image(this.w / 2 + 100, bottomY, 'icon-hint').setScale(0.6).setInteractive({ useHandCursor: true });
+        this.hintBtn = this.add.image(this.w / 2 + 100, bottomY, 'icon-hint').setScale(0.9).setInteractive({ useHandCursor: true });
 
         // 提示次数角标
         this.hintCountText = this.add.text(this.w / 2 + 120, bottomY - 25, `${this.hintCount}`, {
