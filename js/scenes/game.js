@@ -253,6 +253,15 @@ class GameScene extends Phaser.Scene {
         }
 
         pair.forEach(tile => {
+            // 暗扣牌被提示时，永久翻正为正面
+            if (tile.getData('isFaceDown')) {
+                tile.setData('isFaceDown', false);
+                const tileImg = tile.list[0];
+                if (tileImg && tileImg.setTexture) {
+                    tileImg.setTexture(`tile_${tile.getData('type') % 34}`);
+                }
+            }
+
             const tileImg = tile.list[0];
             if (tileImg && tileImg.setTint) {
                 tileImg.setTint(0xf1c40f); // 黄色蒙版
