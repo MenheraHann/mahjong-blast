@@ -84,40 +84,60 @@ class GameScene extends Phaser.Scene {
         });
 
         // 2. 关卡数
-        this.add.text(85, topY - 14, '关卡', {
-            fontSize: '16px',
-            color: '#bdc3c7'
-        }).setOrigin(0, 0.5);
-
-        this.levelText = this.add.text(85, topY + 12, `${this.currentLevel}`, {
+        this.levelText = this.add.text(0, 0, `${this.currentLevel}`, {
             fontSize: '22px',
             color: '#ffffff',
             fontStyle: 'bold'
-        }).setOrigin(0, 0.5);
+        }).setOrigin(0.5, 0);
 
-        // 3. 分数
-        this.add.text(225, topY - 14, '分数', {
+        const levelLabel = this.add.text(0, -18, '关卡', {
             fontSize: '16px',
             color: '#bdc3c7'
-        }).setOrigin(0, 0.5);
+        }).setOrigin(0.5, 0);
 
-        this.scoreText = this.add.text(225, topY + 12, '0', {
+        // 3. 分数
+        this.scoreText = this.add.text(0, 0, '0', {
             fontSize: '22px',
             color: '#f1c40f',
             fontStyle: 'bold'
-        }).setOrigin(0, 0.5);
+        }).setOrigin(0.5, 0);
 
-        // 4. 匹配数
-        this.add.text(365, topY - 14, '匹配', {
+        const scoreLabel = this.add.text(0, -18, '分数', {
             fontSize: '16px',
             color: '#bdc3c7'
-        }).setOrigin(0, 0.5);
+        }).setOrigin(0.5, 0);
 
-        this.matchText = this.add.text(365, topY + 12, '0', {
+        // 4. 匹配数
+        this.matchText = this.add.text(0, 0, '0', {
             fontSize: '22px',
             color: '#2ecc71',
             fontStyle: 'bold'
-        }).setOrigin(0, 0.5);
+        }).setOrigin(0.5, 0);
+
+        const matchLabel = this.add.text(0, -18, '匹配', {
+            fontSize: '16px',
+            color: '#bdc3c7'
+        }).setOrigin(0.5, 0);
+
+        // 三组居中排列
+        const spacing = 120;
+        const groupCenterX = this.w / 2;
+        const groupY = topY - 5;
+
+        levelLabel.x = groupCenterX - spacing;
+        this.levelText.x = groupCenterX - spacing;
+        levelLabel.y = groupY - 8;
+        this.levelText.y = groupY + 12;
+
+        scoreLabel.x = groupCenterX;
+        this.scoreText.x = groupCenterX;
+        scoreLabel.y = groupY - 8;
+        this.scoreText.y = groupY + 12;
+
+        matchLabel.x = groupCenterX + spacing;
+        this.matchText.x = groupCenterX + spacing;
+        matchLabel.y = groupY - 8;
+        this.matchText.y = groupY + 12;
 
         // 5. 菜单按钮
         const menuBtn = this.add.image(this.w - 35, topY, 'icon-menu').setScale(0.45).setInteractive({ useHandCursor: true });
