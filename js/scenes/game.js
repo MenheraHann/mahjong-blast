@@ -590,6 +590,8 @@ class GameScene extends Phaser.Scene {
             if (tileImg && tileImg.setTint) {
                 if (!free) {
                     tileImg.setTint(0x999999);
+                } else if (tile.getData('hintTint')) {
+                    tileImg.setTint(0xf1c40f); // 提示牌保持黄色
                 } else {
                     tileImg.clearTint();
                 }
@@ -1351,9 +1353,13 @@ class GameScene extends Phaser.Scene {
                     });
                 }
 
-                // 暗扣牌翻正后加绿色tint
+                // 暗扣牌翻正后加绿色tint（提示牌保持黄色）
                 if (tileImg.setTint) {
-                    tileImg.setTint(0x90ee90);
+                    if (tile.getData('hintTint')) {
+                        tileImg.setTint(0xf1c40f);
+                    } else {
+                        tileImg.setTint(0x90ee90);
+                    }
                 }
             } else {
                 // 普通牌：正常放大
@@ -1366,8 +1372,13 @@ class GameScene extends Phaser.Scene {
                     ease: 'Sine.easeInOut'
                 });
 
+                // 提示牌选中时保持黄色，否则加绿色tint
                 if (tileImg.setTint) {
-                    tileImg.setTint(0x90ee90);
+                    if (tile.getData('hintTint')) {
+                        tileImg.setTint(0xf1c40f);
+                    } else {
+                        tileImg.setTint(0x90ee90);
+                    }
                 }
             }
         }
@@ -1507,10 +1518,15 @@ class GameScene extends Phaser.Scene {
                 this.animateSelectTile(tile);
                 this.selectedTiles.push(tile);
 
-                // 清除两张牌的绿色选中效果
+                // 清除两张牌的绿色选中效果（提示牌保持黄色）
                 const clearGreen = (t) => {
                     const img = t.list[0];
-                    if (img && img.clearTint) img.clearTint();
+                    if (img && img.clearTint) {
+                        img.clearTint();
+                        if (t.getData('hintTint')) {
+                            img.setTint(0xf1c40f);
+                        }
+                    }
                 };
                 clearGreen(selectedTile);
                 clearGreen(tile);
