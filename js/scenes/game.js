@@ -142,17 +142,17 @@ class GameScene extends Phaser.Scene {
         levelLabel.x = groupCenterX - spacing;
         this.levelText.x = groupCenterX - spacing;
         levelLabel.y = groupY - 8;
-        this.levelText.y = groupY + 12;
+        this.levelText.y = groupY + 35;
 
         scoreLabel.x = groupCenterX;
         this.scoreText.x = groupCenterX;
         scoreLabel.y = groupY - 8;
-        this.scoreText.y = groupY + 12;
+        this.scoreText.y = groupY + 35;
 
         matchLabel.x = groupCenterX + spacing;
         this.matchText.x = groupCenterX + spacing;
         matchLabel.y = groupY - 8;
-        this.matchText.y = groupY + 12;
+        this.matchText.y = groupY + 35;
 
         // 5. 菜单按钮
         const menuBtn = this.add.image(this.w - 35, topY, 'icon-menu').setScale(1.5).setInteractive({ useHandCursor: true });
