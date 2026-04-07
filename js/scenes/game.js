@@ -429,6 +429,12 @@ class GameScene extends Phaser.Scene {
         this.hintBtn.on('pointerdown', () => {
             this.useHint();
         });
+
+        // 左下角更新日期
+        this.add.text(10, this.h - 10, '更新: 2026-04-07', {
+            fontSize: '14px',
+            color: '#7f8c8d'
+        }).setOrigin(0, 1);
     }
 
     useHint() {
