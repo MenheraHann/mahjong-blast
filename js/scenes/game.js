@@ -94,61 +94,61 @@ class GameScene extends Phaser.Scene {
 
     // 设置多点触控
     setupMultiTouch() {
-        // 使用 Phaser 的原生多指针支持
-        // 当有多个指针同时按下时处理
         this.multiTouchTiles = [];
         this.isMultiTouchActive = false;
 
-        // 监听所有指针的 down 事件
-        this.input.on('pointerdown', (pointer) => {
-            this.checkMultiTouch();
-        });
-
-        // 监听所有指针的 up 事件
-        this.input.on('pointerup', (pointer) => {
-            this.multiTouchTiles = [];
-            this.isMultiTouchActive = false;
-        });
+        // 直接监听原生 touchstart 事件
+        const canvas = this.sys.canvas;
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length >= 2) {
+                e.preventDefault();
+                this.handleNativeTouch(e.touches);
+            }
+        }, { passive: false });
     }
 
-    // 检查是否有多点触控
-    checkMultiTouch() {
-        const pointers = this.input.pointers;
-        const activePointers = pointers.filter(p => p.isDown);
+    // 处理原生多点触摸
+    handleNativeTouch(touches) {
+        if (this.isProcessing) return;
 
-        if (activePointers.length >= 2) {
-            // 获取所有活动指针触摸到的牌
-            const touchedTiles = [];
+        const touchedTiles = [];
 
-            for (const pointer of activePointers) {
-                const gameObjects = this.input.hitTest(pointer.x, pointer.y);
+        for (let i = 0; i < touches.length; i++) {
+            const touch = touches[i];
+            const rect = this.sys.canvas.getBoundingClientRect();
 
-                for (const obj of gameObjects) {
-                    let tile = obj;
-                    while (tile && !this.tiles.includes(tile)) {
-                        tile = tile.parent;
-                    }
-                    if (tile && !tile.getData('matched') && this.isTileFree(tile)) {
-                        touchedTiles.push(tile);
-                        break;
-                    }
+            // 计算触摸位置（考虑缩放和设备像素比）
+            const scaleX = this.sys.canvas.width / rect.width;
+            const scaleY = this.sys.canvas.height / rect.height;
+            const x = (touch.clientX - rect.left) * scaleX;
+            const y = (touch.clientY - rect.top) * scaleY;
+
+            // 使用 Phaser 的 hitTest
+            const gameObjects = this.input.hitTest(x, y);
+
+            for (const obj of gameObjects) {
+                let tile = obj;
+                while (tile && !this.tiles.includes(tile)) {
+                    tile = tile.parent;
+                }
+                if (tile && !tile.getData('matched') && this.isTileFree(tile)) {
+                    touchedTiles.push(tile);
+                    break;
                 }
             }
+        }
 
-            // 如果触摸到至少2张匹配的牌，直接消除
-            if (touchedTiles.length >= 2) {
-                // 找到第一对匹配的牌
-                for (let i = 0; i < touchedTiles.length; i++) {
-                    for (let j = i + 1; j < touchedTiles.length; j++) {
-                        const tileA = touchedTiles[i];
-                        const tileB = touchedTiles[j];
+        // 找到匹配的一对牌
+        if (touchedTiles.length >= 2) {
+            for (let i = 0; i < touchedTiles.length; i++) {
+                for (let j = i + 1; j < touchedTiles.length; j++) {
+                    const tileA = touchedTiles[i];
+                    const tileB = touchedTiles[j];
 
-                        if (tileA.getData('type') === tileB.getData('type') &&
-                            !tileA.getData('matched') && !tileB.getData('matched')) {
-                            // 找到匹配的牌，直接消除
-                            this.executeQuickMatch(tileA, tileB);
-                            return;
-                        }
+                    if (tileA.getData('type') === tileB.getData('type') &&
+                        !tileA.getData('matched') && !tileB.getData('matched')) {
+                        this.executeQuickMatch(tileA, tileB);
+                        return;
                     }
                 }
             }
@@ -200,8 +200,7 @@ class GameScene extends Phaser.Scene {
 
     // 禁用多点触控检测（场景关闭时调用）
     disableMultiTouch() {
-        this.input.off('pointerdown');
-        this.input.off('pointerup');
+        // 清理由 this.sys.canvas 添加的监听器
     }
 
     createTopBar() {
