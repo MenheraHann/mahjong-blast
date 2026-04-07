@@ -97,46 +97,96 @@ class GameScene extends Phaser.Scene {
         this.multiTouchTiles = [];
         this.isMultiTouchActive = false;
 
-        // 监听 pointerdown，当有多个指针同时按下时处理
-        this.input.on('pointerdown', (pointer) => {
-            // 延迟检查，确保所有指针都已更新
-            this.time.delayedCall(10, () => {
-                const activePtrs = this.input.pointers.filter(p => p.isDown);
+        // 使用 capture 模式确保在 Phaser 之前捕获触摸事件
+        const canvas = this.sys.game.canvas;
+        const captureTouch = (e) => {
+            if (e.touches.length >= 2) {
+                e.preventDefault();
+                this.handleNativeTouch(e.touches);
+            }
+        };
+        canvas.addEventListener('touchstart', captureTouch, { passive: false, capture: true });
 
-                if (activePtrs.length >= 2) {
-                    const touchedTiles = [];
-
-                    for (const p of activePtrs) {
-                        const gameObjects = this.input.hitTest(p.x, p.y);
-
-                        for (const obj of gameObjects) {
-                            let tile = obj;
-                            while (tile && !this.tiles.includes(tile)) {
-                                tile = tile.parent;
-                            }
-                            if (tile && !tile.getData('matched') && this.isTileFree(tile)) {
-                                touchedTiles.push(tile);
-                                break;
-                            }
+        // 同时监听 pointerdown 作为后备（用于检测多指针）
+        this.input.on('pointerdown', (ptr) => {
+            const activePtrs = this.input.pointers.filter(p => p.isDown);
+            if (activePtrs.length >= 2) {
+                const touchedTiles = [];
+                for (const p of activePtrs) {
+                    const gameObjects = this.input.hitTest(p.x, p.y);
+                    for (const obj of gameObjects) {
+                        let tile = obj;
+                        while (tile && !this.tiles.includes(tile)) {
+                            tile = tile.parent;
                         }
-                    }
-
-                    // 找到匹配的一对
-                    for (let i = 0; i < touchedTiles.length; i++) {
-                        for (let j = i + 1; j < touchedTiles.length; j++) {
-                            const tileA = touchedTiles[i];
-                            const tileB = touchedTiles[j];
-                            if (tileA && tileB && tileA !== tileB &&
-                                tileA.getData('type') === tileB.getData('type') &&
-                                !tileA.getData('matched') && !tileB.getData('matched')) {
-                                this.executeQuickMatch(tileA, tileB);
-                                return;
-                            }
+                        if (tile && !tile.getData('matched') && this.isTileFree(tile)) {
+                            touchedTiles.push(tile);
+                            break;
                         }
                     }
                 }
-            });
+                // 找到匹配的一对
+                for (let i = 0; i < touchedTiles.length; i++) {
+                    for (let j = i + 1; j < touchedTiles.length; j++) {
+                        const tileA = touchedTiles[i];
+                        const tileB = touchedTiles[j];
+                        if (tileA.getData('type') === tileB.getData('type') &&
+                            !tileA.getData('matched') && !tileB.getData('matched')) {
+                            this.executeQuickMatch(tileA, tileB);
+                            return;
+                        }
+                    }
+                }
+            }
         });
+    }
+
+    // 处理原生多点触摸
+    handleNativeTouch(touches) {
+        if (this.isProcessing) return;
+
+        const touchedTiles = [];
+
+        for (let i = 0; i < touches.length; i++) {
+            const touch = touches[i];
+            const rect = this.sys.game.canvas.getBoundingClientRect();
+
+            // 计算触摸位置（考虑缩放和设备像素比）
+            const scaleX = this.sys.game.canvas.width / rect.width;
+            const scaleY = this.sys.game.canvas.height / rect.height;
+            const x = (touch.clientX - rect.left) * scaleX;
+            const y = (touch.clientY - rect.top) * scaleY;
+
+            // 使用 Phaser 的 hitTest
+            const gameObjects = this.input.hitTest(x, y);
+
+            for (const obj of gameObjects) {
+                let tile = obj;
+                while (tile && !this.tiles.includes(tile)) {
+                    tile = tile.parent;
+                }
+                if (tile && !tile.getData('matched') && this.isTileFree(tile)) {
+                    touchedTiles.push(tile);
+                    break;
+                }
+            }
+        }
+
+        // 找到匹配的一对牌
+        if (touchedTiles.length >= 2) {
+            for (let i = 0; i < touchedTiles.length; i++) {
+                for (let j = i + 1; j < touchedTiles.length; j++) {
+                    const tileA = touchedTiles[i];
+                    const tileB = touchedTiles[j];
+
+                    if (tileA.getData('type') === tileB.getData('type') &&
+                        !tileA.getData('matched') && !tileB.getData('matched')) {
+                        this.executeQuickMatch(tileA, tileB);
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     // 执行快速匹配消除
@@ -381,7 +431,7 @@ class GameScene extends Phaser.Scene {
         });
 
         // 左下角更新日期
-        this.add.text(10, this.h - 10, '更新: 2026-04-07 15:29', {
+        this.add.text(10, this.h - 10, '更新: 2026-04-07 15:34', {
             fontSize: '14px',
             color: '#7f8c8d'
         }).setOrigin(0, 1);
