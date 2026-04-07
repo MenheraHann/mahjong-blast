@@ -87,6 +87,103 @@ class GameScene extends Phaser.Scene {
         this.input.keyboard.on('keydown-D', () => {
             this.toggleDebugGrid();
         });
+
+        // 多点触控检测 - 监听触摸开始事件
+        this.touchStartHandler = (event) => {
+            if (event.touches.length >= 2) {
+                this.handleMultiTouch(event.touches);
+            }
+        };
+        this.input.view.root.addEventListener('touchstart', this.touchStartHandler, { passive: false });
+    }
+
+    // 处理多点触摸
+    handleMultiTouch(touches) {
+        if (this.isProcessing) return;
+
+        // 获取所有触摸点对应的牌
+        const touchedTiles = [];
+        for (let i = 0; i < touches.length; i++) {
+            const touch = touches[i];
+            const x = touch.clientX;
+            const y = touch.clientY;
+
+            // 使用 Phaser 的 Game Objects at 方法获取触摸位置的牌
+            const gameObjects = this.input.hitTestPointerPosition(
+                this.input.pointerFromId(touch.identifier), x, y
+            );
+
+            // 找到被触摸的牌（牌是 container，检查是否在 tiles 中）
+            for (const obj of gameObjects) {
+                // obj 可能是 tileImg 或 container
+                let tile = obj;
+                while (tile && !this.tiles.includes(tile)) {
+                    tile = tile.parent;
+                }
+                if (tile && !tile.getData('matched') && this.isTileFree(tile)) {
+                    touchedTiles.push(tile);
+                    break;
+                }
+            }
+        }
+
+        // 如果同时触摸到2张匹配的牌，直接消除
+        if (touchedTiles.length >= 2) {
+            const tileA = touchedTiles[0];
+            const tileB = touchedTiles[1];
+
+            if (tileA && tileB && tileA !== tileB &&
+                tileA.getData('type') === tileB.getData('type') &&
+                !tileA.getData('matched') && !tileB.getData('matched')) {
+                // 找到匹配的牌，直接消除
+                this.isProcessing = true;
+
+                // 清除提示状态
+                this.stopHintSwing(tileA);
+                this.stopHintSwing(tileB);
+
+                // 直接执行碰撞消除
+                this.animateCollision(tileA, tileB, () => {
+                    tileA.setData('matched', true);
+                    tileB.setData('matched', true);
+
+                    if (this.hintTiles.includes(tileA) || this.hintTiles.includes(tileB)) {
+                        this.clearHint();
+                    }
+
+                    if (tileA.getData('layer') > 0 || tileB.getData('layer') > 0) {
+                        this.refreshCoveredState();
+                    }
+
+                    this.matchedPairs++;
+                    this.score += 200;
+                    this.combo++;
+                    if (this.combo > this.maxCombo) {
+                        this.maxCombo = this.combo;
+                    }
+                    this.scoreText.setText(`${this.score}`);
+
+                    this.isProcessing = false;
+                    this.recalculateAllFreeStatus();
+
+                    if (this.remainingPairs === 0) {
+                        this.smartShuffle();
+                    }
+
+                    const remaining = this.tiles.filter(t => !t.getData('matched'));
+                    if (remaining.length === 0) {
+                        this.time.delayedCall(500, () => this.levelComplete());
+                    }
+                });
+            }
+        }
+    }
+
+    // 禁用多点触控检测（场景关闭时调用）
+    disableMultiTouch() {
+        if (this.touchStartHandler) {
+            this.input.view.root.removeEventListener('touchstart', this.touchStartHandler);
+        }
     }
 
     createTopBar() {
@@ -2549,5 +2646,10 @@ class GameScene extends Phaser.Scene {
 
         this.debugGridGraphics = g;
         g.setData('debugTexts', debugTexts);
+    }
+
+    // 场景关闭时清理
+    shutdown() {
+        this.disableMultiTouch();
     }
 }
