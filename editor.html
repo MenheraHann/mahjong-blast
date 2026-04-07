@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+    <title>麻将关卡编辑器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #2c3e50;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            color: #fff;
+        }
+        h1 {
+            font-size: 28px;
+            color: #f1c40f;
+            margin-bottom: 15px;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+        .layer-btns {
+            display: flex;
+            gap: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #3498db;
+            color: #fff;
+            transition: all 0.2s;
+        }
+        button:hover { transform: scale(1.05); }
+        button.active { background: #e74c3c; }
+        button.clear { background: #e67e22; }
+        button.export { background: #27ae60; }
+        button.preview { background: #9b59b6; }
+        .level-input {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .level-input input {
+            width: 60px;
+            padding: 10px;
+            font-size: 18px;
+            text-align: center;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            background: #2c3e50;
+            color: #fff;
+        }
+        .level-input span {
+            font-size: 16px;
+            color: #bdc3c7;
+        }
+        .grid-container {
+            background: #34495e;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        canvas {
+            display: block;
+            border-radius: 8px;
+        }
+        .stats {
+            margin-top: 15px;
+            font-size: 16px;
+            color: #bdc3c7;
+            text-align: center;
+        }
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            justify-content: center;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+        }
+        .legend-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        .legend-box.ming { background: #3498db; border: 2px solid #2980b9; }
+        .legend-box.an { background: #1a1a2e; border: 2px solid #444; }
+        .legend-box.selected { background: #e74c3c; border: 2px solid #c0392b; }
+        .output-area {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 600px;
+        }
+        .output-area textarea {
+            width: 100%;
+            height: 200px;
+            background: #1a252f;
+            color: #ecf0f1;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+        .output-area textarea:focus {
+            outline: none;
+            border-color: #f1c40f;
+        }
+        .copy-btn {
+            margin-top: 10px;
+            width: 100%;
+            background: #16a085;
+        }
+        .instructions {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #95a5a6;
+            text-align: center;
+            max-width: 500px;
+        }
+    </style>
+</head>
+<body>
+    <h1>麻将关卡编辑器</h1>
+
+    <div class="controls">
+        <div class="layer-btns">
+            <button class="active" data-layer="0">Layer 0</button>
+            <button data-layer="1">Layer 1</button>
+            <button data-layer="2">Layer 2</button>
+            <button data-layer="3">Layer 3</button>
+        </div>
+        <div class="level-input">
+            <span>关卡:</span>
+            <input type="number" id="levelNum" value="1" min="1" max="20">
+        </div>
+        <button class="clear" id="clearLayer">清空当前层</button>
+        <button class="clear" id="clearAll">清空全部</button>
+        <button class="export" id="exportBtn">导出JSON</button>
+    </div>
+
+    <div class="grid-container">
+        <canvas id="gridCanvas"></canvas>
+    </div>
+
+    <div class="stats" id="stats">Layer 0: 0 张牌</div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-box ming"></div>
+            <span>明牌</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-box an"></div>
+            <span>暗扣</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-box selected"></div>
+            <span>选中(点击切换暗扣)</span>
+        </div>
+    </div>
+
+    <div class="output-area">
+        <textarea id="jsonOutput" placeholder="点击【导出JSON】按钮生成关卡配置..."></textarea>
+        <button class="copy-btn" id="copyBtn">复制JSON到剪贴板</button>
+    </div>
+
+    <div class="instructions">
+        点击网格放置牌，再次点击移除牌。<br>
+        点击已有牌可切换明牌/暗扣状态。<br>
+        导出JSON后发送给开发者即可更新游戏关卡。
+    </div>
+
+    <script>
+        // 12列 × 14行网格
+        const COLS = 12;
+        const ROWS = 14;
+        const CELL_SIZE = 50; // 每个交点单元格大小
+        const POINT_RADIUS = 6; // 交点圆点半径
+        const TILE_WIDTH = 40;  // 牌宽度(视觉)
+        const TILE_HEIGHT = 56; // 牌高度(视觉)
+
+        // 当前编辑状态
+        let currentLayer = 0;
+        let selectedTile = null; // 当前选中的牌(用于切换暗扣)
+
+        // 关卡数据: { "layer_row_col": { faceDown: boolean } }
+        let tiles = {};
+
+        // Canvas设置
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 计算画布尺寸(稍微放大一点)
+        const PADDING = 60;
+        canvas.width = COLS * CELL_SIZE + PADDING * 2;
+        canvas.height = ROWS * CELL_SIZE + PADDING * 2;
+
+        // 绘制网格
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制背景
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制交点
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const x = PADDING + col * CELL_SIZE;
+                    const y = PADDING + row * CELL_SIZE;
+
+                    // 交点圆点
+                    ctx.beginPath();
+                    ctx.arc(x, y, POINT_RADIUS, 0, Math.PI * 2);
+                    ctx.fillStyle = '#5d6d7e';
+                    ctx.fill();
+                }
+            }
+
+            // 绘制各层已放置的牌
+            for (let layer = 0; layer <= 3; layer++) {
+                drawTilesAtLayer(layer);
+            }
+
+            // 绘制当前层的网格高亮
+            drawCurrentLayerHighlight();
+
+            // 更新统计
+            updateStats();
+        }
+
+        // 绘制指定层的牌
+        function drawTilesAtLayer(layer) {
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const key = `${layer}_${row}_${col}`;
+                    if (tiles[key]) {
+                        drawTile(layer, row, col, tiles[key].faceDown, key === selectedTile);
+                    }
+                }
+            }
+        }
+
+        // 绘制单张牌
+        function drawTile(layer, row, col, faceDown, isSelected) {
+            const x = PADDING + col * CELL_SIZE;
+            const y = PADDING + row * CELL_SIZE;
+
+            // 层偏移(越高层越左上)
+            const offsetX = layer * 4;
+            const offsetY = layer * 4;
+
+            const tileX = x - TILE_WIDTH / 2 + offsetX;
+            const tileY = y - TILE_HEIGHT / 2 + offsetY;
+
+            // 牌背景
+            if (faceDown) {
+                ctx.fillStyle = '#1a1a2e';
+            } else {
+                ctx.fillStyle = '#ecf0f1';
+            }
+
+            // 选中高亮
+            if (isSelected) {
+                ctx.strokeStyle = '#e74c3c';
+                ctx.lineWidth = 3;
+            } else {
+                ctx.strokeStyle = faceDown ? '#444' : '#bdc3c7';
+                ctx.lineWidth = 1;
+            }
+
+            // 圆角矩形
+            const radius = 6;
+            ctx.beginPath();
+            ctx.moveTo(tileX + radius, tileY);
+            ctx.lineTo(tileX + TILE_WIDTH - radius, tileY);
+            ctx.quadraticCurveTo(tileX + TILE_WIDTH, tileY, tileX + TILE_WIDTH, tileY + radius);
+            ctx.lineTo(tileX + TILE_WIDTH, tileY + TILE_HEIGHT - radius);
+            ctx.quadraticCurveTo(tileX + TILE_WIDTH, tileY + TILE_HEIGHT, tileX + TILE_WIDTH - radius, tileY + TILE_HEIGHT);
+            ctx.lineTo(tileX + radius, tileY + TILE_HEIGHT);
+            ctx.quadraticCurveTo(tileX, tileY + TILE_HEIGHT, tileX, tileY + TILE_HEIGHT - radius);
+            ctx.lineTo(tileX, tileY + radius);
+            ctx.quadraticCurveTo(tileX, tileY, tileX + radius, tileY);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 暗扣标记(斜线)
+            if (faceDown) {
+                ctx.strokeStyle = '#f39c12';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(tileX + 8, tileY + 8);
+                ctx.lineTo(tileX + TILE_WIDTH - 8, tileY + TILE_HEIGHT - 8);
+                ctx.moveTo(tileX + TILE_WIDTH - 8, tileY + 8);
+                ctx.lineTo(tileX + 8, tileY + TILE_HEIGHT - 8);
+                ctx.stroke();
+            }
+
+            // 层标记(右上角小数字)
+            ctx.fillStyle = faceDown ? '#f39c12' : '#7f8c8d';
+            ctx.font = '10px Arial';
+            ctx.fillText(`L${layer}`, tileX + TILE_WIDTH - 18, tileY + 12);
+        }
+
+        // 绘制当前层的高亮
+        function drawCurrentLayerHighlight() {
+            // 当前层的交点高亮
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const x = PADDING + col * CELL_SIZE;
+                    const y = PADDING + row * CELL_SIZE;
+
+                    const key = `${currentLayer}_${row}_${col}`;
+                    if (!tiles[key]) {
+                        // 未放置牌的交点高亮
+                        ctx.beginPath();
+                        ctx.arc(x, y, POINT_RADIUS, 0, Math.PI * 2);
+                        ctx.fillStyle = '#3498db';
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        // 点击事件处理
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            // 找到最近的交点
+            let nearestRow = -1, nearestCol = -1, nearestDist = Infinity;
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const x = PADDING + col * CELL_SIZE;
+                    const y = PADDING + row * CELL_SIZE;
+                    const dist = Math.sqrt((clickX - x) ** 2 + (clickY - y) ** 2);
+                    if (dist < nearestDist && dist < CELL_SIZE / 2) {
+                        nearestDist = dist;
+                        nearestRow = row;
+                        nearestCol = col;
+                    }
+                }
+            }
+
+            if (nearestRow >= 0 && nearestCol >= 0) {
+                const key = `${currentLayer}_${nearestRow}_${nearestCol}`;
+
+                if (tiles[key]) {
+                    // 已有牌 - 切换选中状态或移除
+                    if (selectedTile === key) {
+                        // 双击 - 切换暗扣
+                        tiles[key].faceDown = !tiles[key].faceDown;
+                        selectedTile = null;
+                    } else {
+                        // 单击选中
+                        selectedTile = key;
+                    }
+                } else {
+                    // 没有牌 - 放置新牌
+                    tiles[key] = { faceDown: false };
+                    selectedTile = null;
+                }
+
+                draw();
+            }
+        });
+
+        // 右键移除牌
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const key = `${currentLayer}_${row}_${col}`;
+                    if (tiles[key]) {
+                        const x = PADDING + col * CELL_SIZE;
+                        const y = PADDING + row * CELL_SIZE;
+                        const offsetX = currentLayer * 4;
+                        const offsetY = currentLayer * 4;
+                        const tileX = x - TILE_WIDTH / 2 + offsetX;
+                        const tileY = y - TILE_HEIGHT / 2 + offsetY;
+
+                        if (clickX >= tileX && clickX <= tileX + TILE_WIDTH &&
+                            clickY >= tileY && clickY <= tileY + TILE_HEIGHT) {
+                            delete tiles[key];
+                            if (selectedTile === key) selectedTile = null;
+                            draw();
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+
+        // Layer按钮
+        document.querySelectorAll('.layer-btns button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.layer-btns button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentLayer = parseInt(btn.dataset.layer);
+                selectedTile = null;
+                draw();
+            });
+        });
+
+        // 清空当前层
+        document.getElementById('clearLayer').addEventListener('click', () => {
+            const keys = Object.keys(tiles).filter(k => k.startsWith(`${currentLayer}_`));
+            keys.forEach(k => delete tiles[k]);
+            selectedTile = null;
+            draw();
+        });
+
+        // 清空全部
+        document.getElementById('clearAll').addEventListener('click', () => {
+            if (confirm('确定要清空所有层的牌吗？')) {
+                tiles = {};
+                selectedTile = null;
+                draw();
+            }
+        });
+
+        // 导出JSON
+        document.getElementById('exportBtn').addEventListener('click', () => {
+            const level = document.getElementById('levelNum').value || 1;
+
+            // 构建tiles数组
+            const tilesArray = [];
+            for (let layer = 0; layer <= 3; layer++) {
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        const key = `${layer}_${row}_${col}`;
+                        if (tiles[key]) {
+                            tilesArray.push({
+                                row: row,
+                                col: col,
+                                layer: layer,
+                                faceDown: tiles[key].faceDown
+                            });
+                        }
+                    }
+                }
+            }
+
+            // 如果没有牌，提示用户
+            if (tilesArray.length === 0) {
+                alert('请先放置一些牌！');
+                return;
+            }
+
+            const config = {
+                level: parseInt(level),
+                symmetry: "horizontal",
+                tiles: tilesArray
+            };
+
+            const jsonStr = JSON.stringify(config, null, 2);
+            document.getElementById('jsonOutput').value = jsonStr;
+        });
+
+        // 复制按钮
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const textarea = document.getElementById('jsonOutput');
+            if (!textarea.value) {
+                alert('请先点击【导出JSON】生成配置！');
+                return;
+            }
+            textarea.select();
+            document.execCommand('copy');
+            alert('JSON已复制到剪贴板！');
+        });
+
+        // 更新统计
+        function updateStats() {
+            const counts = [0, 0, 0, 0];
+            Object.keys(tiles).forEach(key => {
+                const layer = parseInt(key.split('_')[0]);
+                counts[layer]++;
+            });
+            const total = counts.reduce((a, b) => a + b, 0);
+            document.getElementById('stats').textContent =
+                `总计: ${total} | L0: ${counts[0]} | L1: ${counts[1]} | L2: ${counts[2]} | L3: ${counts[3]}`;
+        }
+
+        // 初始绘制
+        draw();
+    </script>
+</body>
+</html>
