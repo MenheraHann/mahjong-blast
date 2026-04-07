@@ -196,8 +196,8 @@
         // 与游戏中的stepX/stepY保持一致
         const STEP_X = 48;  // 横向间距
         const STEP_Y = 68;  // 纵向间距
-        const TILE_WIDTH = 54;   // 牌宽度(与游戏tileSize一致)
-        const TILE_HEIGHT = 79;  // 牌高度(与游戏tileHeight一致)
+        const TILE_WIDTH = 54 * 2;   // 牌宽度(放大2倍)
+        const TILE_HEIGHT = 79 * 2;  // 牌高度(放大2倍)
         const CELL_SIZE = Math.max(STEP_X, STEP_Y); // 使用最大间距作为单元格大小
         const POINT_RADIUS = 5; // 交点圆点半径
 
