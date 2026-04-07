@@ -97,14 +97,48 @@ class GameScene extends Phaser.Scene {
         this.multiTouchTiles = [];
         this.isMultiTouchActive = false;
 
-        // 直接监听原生 touchstart 事件
-        const canvas = this.sys.canvas;
-        canvas.addEventListener('touchstart', (e) => {
+        // 使用 capture 模式确保在 Phaser 之前捕获触摸事件
+        const canvas = this.sys.game.canvas;
+        const captureTouch = (e) => {
             if (e.touches.length >= 2) {
                 e.preventDefault();
                 this.handleNativeTouch(e.touches);
             }
-        }, { passive: false });
+        };
+        canvas.addEventListener('touchstart', captureTouch, { passive: false, capture: true });
+
+        // 同时监听 pointerdown 作为后备（用于检测多指针）
+        this.input.on('pointerdown', (ptr) => {
+            const activePtrs = this.input.pointers.filter(p => p.isDown);
+            if (activePtrs.length >= 2) {
+                const touchedTiles = [];
+                for (const p of activePtrs) {
+                    const gameObjects = this.input.hitTest(p.x, p.y);
+                    for (const obj of gameObjects) {
+                        let tile = obj;
+                        while (tile && !this.tiles.includes(tile)) {
+                            tile = tile.parent;
+                        }
+                        if (tile && !tile.getData('matched') && this.isTileFree(tile)) {
+                            touchedTiles.push(tile);
+                            break;
+                        }
+                    }
+                }
+                // 找到匹配的一对
+                for (let i = 0; i < touchedTiles.length; i++) {
+                    for (let j = i + 1; j < touchedTiles.length; j++) {
+                        const tileA = touchedTiles[i];
+                        const tileB = touchedTiles[j];
+                        if (tileA.getData('type') === tileB.getData('type') &&
+                            !tileA.getData('matched') && !tileB.getData('matched')) {
+                            this.executeQuickMatch(tileA, tileB);
+                            return;
+                        }
+                    }
+                }
+            }
+        });
     }
 
     // 处理原生多点触摸
@@ -115,11 +149,11 @@ class GameScene extends Phaser.Scene {
 
         for (let i = 0; i < touches.length; i++) {
             const touch = touches[i];
-            const rect = this.sys.canvas.getBoundingClientRect();
+            const rect = this.sys.game.canvas.getBoundingClientRect();
 
             // 计算触摸位置（考虑缩放和设备像素比）
-            const scaleX = this.sys.canvas.width / rect.width;
-            const scaleY = this.sys.canvas.height / rect.height;
+            const scaleX = this.sys.game.canvas.width / rect.width;
+            const scaleY = this.sys.game.canvas.height / rect.height;
             const x = (touch.clientX - rect.left) * scaleX;
             const y = (touch.clientY - rect.top) * scaleY;
 
