@@ -20,6 +20,9 @@ class GameScene extends Phaser.Scene {
         this.combo = 0;
         this.maxCombo = 0;
         this.startTime = Date.now();
+        // 快速连击相关
+        this.lastClickTile = null;
+        this.lastClickTime = 0;
     }
 
     preload() {
@@ -916,7 +919,7 @@ class GameScene extends Phaser.Scene {
     // 加载定制关卡配置
     loadLevelConfig(level) {
         // 优先从 localStorage 加载（自定义关卡）
-        const key = `mahjong_custom_level_${level}`;
+        const key = `mahjongLevel_${level}`;
         const saved = localStorage.getItem(key);
         if (saved) {
             try {
@@ -937,24 +940,14 @@ class GameScene extends Phaser.Scene {
         // 为所有位置生成成对的牌面值
         const allPositions = tiles.map(t => `${t.layer}_${t.row}_${t.col}`);
         const pairCount = Math.floor(allPositions.length / 2);
-
-        // 如果配置中有 type，则使用配置的 type
-        const hasTypes = tiles.some(t => t.type !== undefined);
-        let types = [];
-
-        if (hasTypes) {
-            // 使用配置中的 type
-            types = tiles.map(t => t.type);
-        } else {
-            // 生成随机 type
-            for (let i = 0; i < pairCount; i++) {
-                const type = Math.floor(Math.random() * 34);
-                types.push(type, type);
-            }
-            for (let i = types.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [types[i], types[j]] = [types[j], types[i]];
-            }
+        const types = [];
+        for (let i = 0; i < pairCount; i++) {
+            const type = Math.floor(Math.random() * 34);
+            types.push(type, type);
+        }
+        for (let i = types.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [types[i], types[j]] = [types[j], types[i]];
         }
 
         let tileIdx = 0;
@@ -969,7 +962,7 @@ class GameScene extends Phaser.Scene {
             });
 
             layerTiles.forEach(t => {
-                const type = hasTypes ? t.type : types[tileIdx % types.length];
+                const type = types[tileIdx % types.length];
                 // 坐标 = 交点坐标 × 步长 + 层偏移
                 const x = startX + t.col * stepX + layer * layerOffsetX;
                 const y = startY + t.row * stepY + layer * layerOffsetY;
@@ -2184,10 +2177,71 @@ class GameScene extends Phaser.Scene {
             return;
         }
 
+        const now = Date.now();
+        const QUICK_CLICK_THRESHOLD = 200; // 200ms内快速连点
+
+        // 检查是否快速连点匹配（直接消除，跳过选中动画）
+        if (this.lastClickTile && this.lastClickTile !== tile) {
+            const timeDiff = now - this.lastClickTime;
+            if (timeDiff <= QUICK_CLICK_THRESHOLD &&
+                this.lastClickTile.getData('type') === tile.getData('type') &&
+                !this.lastClickTile.getData('matched')) {
+                // 快速连点匹配，直接消除
+                const firstTile = this.lastClickTile; // 先保存引用
+                this.isProcessing = true;
+                this.lastClickTile = null;
+                this.lastClickTime = 0;
+
+                // 清除提示状态
+                this.stopHintSwing(firstTile);
+                this.stopHintSwing(tile);
+
+                // 直接执行碰撞消除
+                this.animateCollision(firstTile, tile, () => {
+                    firstTile.setData('matched', true);
+                    tile.setData('matched', true);
+
+                    if (this.hintTiles.includes(firstTile) || this.hintTiles.includes(tile)) {
+                        this.clearHint();
+                    }
+
+                    if (firstTile.getData('layer') > 0 || tile.getData('layer') > 0) {
+                        this.refreshCoveredState();
+                    }
+
+                    this.matchedPairs++;
+                    this.score += 200;
+                    this.combo++;
+                    if (this.combo > this.maxCombo) {
+                        this.maxCombo = this.combo;
+                    }
+                    this.scoreText.setText(`${this.score}`);
+
+                    this.isProcessing = false;
+                    this.recalculateAllFreeStatus();
+
+                    if (this.remainingPairs === 0) {
+                        this.smartShuffle();
+                    }
+
+                    const remaining = this.tiles.filter(t => !t.getData('matched'));
+                    if (remaining.length === 0) {
+                        this.time.delayedCall(500, () => this.levelComplete());
+                    }
+                });
+                return;
+            }
+        }
+
+        // 记录本次点击
+        this.lastClickTile = tile;
+        this.lastClickTime = now;
+
         // 再次点击已选中的牌 → 取消选中
         if (this.selectedTiles.includes(tile)) {
             this.animateDeselectTile(tile);
             this.selectedTiles = this.selectedTiles.filter(t => t !== tile);
+            this.lastClickTile = null; // 清除快速连点记录
             return;
         }
 
