@@ -190,13 +190,16 @@
     </div>
 
     <script>
-        // 12列 × 14行网格
+        // 12列 × 14行网格 - 与游戏保持一致
         const COLS = 12;
         const ROWS = 14;
-        const CELL_SIZE = 50; // 每个交点单元格大小
-        const POINT_RADIUS = 6; // 交点圆点半径
-        const TILE_WIDTH = 40;  // 牌宽度(视觉)
-        const TILE_HEIGHT = 56; // 牌高度(视觉)
+        // 与游戏中的stepX/stepY保持一致
+        const STEP_X = 48;  // 横向间距
+        const STEP_Y = 68;  // 纵向间距
+        const TILE_WIDTH = 54;   // 牌宽度(与游戏tileSize一致)
+        const TILE_HEIGHT = 79;  // 牌高度(与游戏tileHeight一致)
+        const CELL_SIZE = Math.max(STEP_X, STEP_Y); // 使用最大间距作为单元格大小
+        const POINT_RADIUS = 5; // 交点圆点半径
 
         // 当前编辑状态
         let currentLayer = 0;
@@ -209,10 +212,106 @@
         const canvas = document.getElementById('gridCanvas');
         const ctx = canvas.getContext('2d');
 
-        // 计算画布尺寸(稍微放大一点)
+        // 计算画布尺寸
         const PADDING = 60;
-        canvas.width = COLS * CELL_SIZE + PADDING * 2;
-        canvas.height = ROWS * CELL_SIZE + PADDING * 2;
+        canvas.width = (COLS - 1) * STEP_X + TILE_WIDTH + PADDING * 2;
+        canvas.height = (ROWS - 1) * STEP_Y + TILE_HEIGHT + PADDING * 2;
+
+        // 检查某位置是否可以放置指定层级的牌
+        function canPlace(layer, row, col) {
+            const key = `${layer}_${row}_${col}`;
+
+            // 已经有牌了
+            if (tiles[key]) return false;
+
+            // Layer 0：检查周围8个点是否有Layer 0的牌
+            if (layer === 0) {
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        const nr = row + dr;
+                        const nc = col + dc;
+                        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+                            const neighborKey = `0_${nr}_${nc}`;
+                            if (tiles[neighborKey]) return false;
+                        }
+                    }
+                }
+            }
+
+            // Layer 1-3：检查底层是否有支撑牌
+            if (layer >= 1) {
+                const belowKey = `${layer - 1}_${row}_${col}`;
+                if (!tiles[belowKey]) return false;
+            }
+
+            return true;
+        }
+
+        // 检查某位置是否被锁定（周围有邻居牌或被覆盖）
+        function isLocked(layer, row, col) {
+            const key = `${layer}_${row}_${col}`;
+            if (tiles[key]) return false; // 已经有牌才需要判断是否锁定
+
+            // Layer 0：检查左右是否有邻居（左右锁定规则）
+            if (layer === 0) {
+                const leftKey = `0_${row}_${col - 2}`;
+                const rightKey = `0_${row}_${col + 2}`;
+                const hasLeft = tiles[leftKey];
+                const hasRight = tiles[rightKey];
+
+                // 左右都被夹住
+                if (hasLeft && hasRight) {
+                    // 检查上下是否被压住
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            if (dr === 0 && dc === 0) continue;
+                            const nr = row + dr;
+                            const nc = col + dc;
+                            const upperKey = `0_${nr}_${nc}`;
+                            if (tiles[upperKey] && nr < row) {
+                                return true; // 被上面的牌压住
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 上层是否覆盖此位置
+            for (let l = layer + 1; l <= 3; l++) {
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const nr = row + dr;
+                        const nc = col + dc;
+                        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+                            const upperKey = `${l}_${nr}_${nc}`;
+                            if (tiles[upperKey]) return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // 计算交点坐标（与游戏一致）
+        function getPointPos(row, col) {
+            return {
+                x: PADDING + col * STEP_X,
+                y: PADDING + row * STEP_Y
+            };
+        }
+
+        // 计算牌的位置
+        function getTilePos(layer, row, col) {
+            const point = getPointPos(row, col);
+            const offsetX = layer * 4;
+            const offsetY = layer * 4;
+            return {
+                x: point.x - TILE_WIDTH / 2 + offsetX,
+                y: point.y - TILE_HEIGHT / 2 + offsetY
+            };
+        }
 
         // 绘制网格
         function draw() {
@@ -222,26 +321,48 @@
             ctx.fillStyle = '#2c3e50';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // 绘制交点网格线
+            ctx.strokeStyle = '#3d4f5f';
+            ctx.lineWidth = 1;
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const point = getPointPos(row, col);
+                    // 横线
+                    if (col < COLS - 1) {
+                        const nextPoint = getPointPos(row, col + 1);
+                        ctx.beginPath();
+                        ctx.moveTo(point.x, point.y);
+                        ctx.lineTo(nextPoint.x, nextPoint.y);
+                        ctx.stroke();
+                    }
+                    // 竖线
+                    if (row < ROWS - 1) {
+                        const nextPoint = getPointPos(row + 1, col);
+                        ctx.beginPath();
+                        ctx.moveTo(point.x, point.y);
+                        ctx.lineTo(nextPoint.x, nextPoint.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
             // 绘制交点
             for (let row = 0; row < ROWS; row++) {
                 for (let col = 0; col < COLS; col++) {
-                    const x = PADDING + col * CELL_SIZE;
-                    const y = PADDING + row * CELL_SIZE;
-
-                    // 交点圆点
+                    const point = getPointPos(row, col);
                     ctx.beginPath();
-                    ctx.arc(x, y, POINT_RADIUS, 0, Math.PI * 2);
+                    ctx.arc(point.x, point.y, POINT_RADIUS, 0, Math.PI * 2);
                     ctx.fillStyle = '#5d6d7e';
                     ctx.fill();
                 }
             }
 
-            // 绘制各层已放置的牌
+            // 绘制各层已放置的牌（从低层到高层）
             for (let layer = 0; layer <= 3; layer++) {
                 drawTilesAtLayer(layer);
             }
 
-            // 绘制当前层的网格高亮
+            // 绘制当前层的高亮和锁定状态
             drawCurrentLayerHighlight();
 
             // 更新统计
@@ -262,15 +383,9 @@
 
         // 绘制单张牌
         function drawTile(layer, row, col, faceDown, isSelected) {
-            const x = PADDING + col * CELL_SIZE;
-            const y = PADDING + row * CELL_SIZE;
-
-            // 层偏移(越高层越左上)
-            const offsetX = layer * 4;
-            const offsetY = layer * 4;
-
-            const tileX = x - TILE_WIDTH / 2 + offsetX;
-            const tileY = y - TILE_HEIGHT / 2 + offsetY;
+            const tilePos = getTilePos(layer, row, col);
+            const tileX = tilePos.x;
+            const tileY = tilePos.y;
 
             // 牌背景
             if (faceDown) {
@@ -316,27 +431,43 @@
                 ctx.stroke();
             }
 
-            // 层标记(右上角小数字)
+            // 层标记(左上角小数字)
             ctx.fillStyle = faceDown ? '#f39c12' : '#7f8c8d';
-            ctx.font = '10px Arial';
-            ctx.fillText(`L${layer}`, tileX + TILE_WIDTH - 18, tileY + 12);
+            ctx.font = 'bold 11px Arial';
+            ctx.fillText(`L${layer}`, tileX + 4, tileY + 14);
         }
 
-        // 绘制当前层的高亮
+        // 绘制当前层的高亮和锁定状态
         function drawCurrentLayerHighlight() {
-            // 当前层的交点高亮
             for (let row = 0; row < ROWS; row++) {
                 for (let col = 0; col < COLS; col++) {
-                    const x = PADDING + col * CELL_SIZE;
-                    const y = PADDING + row * CELL_SIZE;
-
+                    const point = getPointPos(row, col);
                     const key = `${currentLayer}_${row}_${col}`;
-                    if (!tiles[key]) {
-                        // 未放置牌的交点高亮
-                        ctx.beginPath();
-                        ctx.arc(x, y, POINT_RADIUS, 0, Math.PI * 2);
-                        ctx.fillStyle = '#3498db';
-                        ctx.fill();
+
+                    if (tiles[key]) {
+                        // 已有牌，绘制选中状态
+                        if (selectedTile === key) {
+                            ctx.beginPath();
+                            ctx.arc(point.x, point.y, POINT_RADIUS + 4, 0, Math.PI * 2);
+                            ctx.strokeStyle = '#e74c3c';
+                            ctx.lineWidth = 2;
+                            ctx.stroke();
+                        }
+                    } else {
+                        // 没有牌，检查是否可以放置
+                        if (canPlace(currentLayer, row, col)) {
+                            // 可以放置 - 蓝色高亮
+                            ctx.beginPath();
+                            ctx.arc(point.x, point.y, POINT_RADIUS, 0, Math.PI * 2);
+                            ctx.fillStyle = '#3498db';
+                            ctx.fill();
+                        } else {
+                            // 不能放置 - 灰色/锁定
+                            ctx.beginPath();
+                            ctx.arc(point.x, point.y, POINT_RADIUS, 0, Math.PI * 2);
+                            ctx.fillStyle = '#7f8c8d';
+                            ctx.fill();
+                        }
                     }
                 }
             }
@@ -355,10 +486,9 @@
 
             for (let row = 0; row < ROWS; row++) {
                 for (let col = 0; col < COLS; col++) {
-                    const x = PADDING + col * CELL_SIZE;
-                    const y = PADDING + row * CELL_SIZE;
-                    const dist = Math.sqrt((clickX - x) ** 2 + (clickY - y) ** 2);
-                    if (dist < nearestDist && dist < CELL_SIZE / 2) {
+                    const point = getPointPos(row, col);
+                    const dist = Math.sqrt((clickX - point.x) ** 2 + (clickY - point.y) ** 2);
+                    if (dist < nearestDist && dist < STEP_X / 2) {
                         nearestDist = dist;
                         nearestRow = row;
                         nearestCol = col;
@@ -370,7 +500,7 @@
                 const key = `${currentLayer}_${nearestRow}_${nearestCol}`;
 
                 if (tiles[key]) {
-                    // 已有牌 - 切换选中状态或移除
+                    // 已有牌 - 切换选中状态或暗扣
                     if (selectedTile === key) {
                         // 双击 - 切换暗扣
                         tiles[key].faceDown = !tiles[key].faceDown;
@@ -380,9 +510,14 @@
                         selectedTile = key;
                     }
                 } else {
-                    // 没有牌 - 放置新牌
-                    tiles[key] = { faceDown: false };
-                    selectedTile = null;
+                    // 没有牌 - 检查是否可以放置
+                    if (canPlace(currentLayer, nearestRow, nearestCol)) {
+                        tiles[key] = { faceDown: false };
+                        selectedTile = null;
+                    } else {
+                        // 不能放置 - 提示或震动效果
+                        alert('此处不能放置牌！\n\nLayer 0: 周围8格已有牌\nLayer 1-3: 底层没有支撑牌');
+                    }
                 }
 
                 draw();
@@ -398,23 +533,20 @@
             const clickX = (e.clientX - rect.left) * scaleX;
             const clickY = (e.clientY - rect.top) * scaleY;
 
-            for (let row = 0; row < ROWS; row++) {
-                for (let col = 0; col < COLS; col++) {
-                    const key = `${currentLayer}_${row}_${col}`;
-                    if (tiles[key]) {
-                        const x = PADDING + col * CELL_SIZE;
-                        const y = PADDING + row * CELL_SIZE;
-                        const offsetX = currentLayer * 4;
-                        const offsetY = currentLayer * 4;
-                        const tileX = x - TILE_WIDTH / 2 + offsetX;
-                        const tileY = y - TILE_HEIGHT / 2 + offsetY;
+            for (let layer = 3; layer >= 0; layer--) {
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        const key = `${layer}_${row}_${col}`;
+                        if (tiles[key]) {
+                            const tilePos = getTilePos(layer, row, col);
 
-                        if (clickX >= tileX && clickX <= tileX + TILE_WIDTH &&
-                            clickY >= tileY && clickY <= tileY + TILE_HEIGHT) {
-                            delete tiles[key];
-                            if (selectedTile === key) selectedTile = null;
-                            draw();
-                            return;
+                            if (clickX >= tilePos.x && clickX <= tilePos.x + TILE_WIDTH &&
+                                clickY >= tilePos.y && clickY <= tilePos.y + TILE_HEIGHT) {
+                                delete tiles[key];
+                                if (selectedTile === key) selectedTile = null;
+                                draw();
+                                return;
+                            }
                         }
                     }
                 }
