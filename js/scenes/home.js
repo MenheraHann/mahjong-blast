@@ -56,7 +56,7 @@ class HomeScene extends Phaser.Scene {
         }
 
         // 左下角更新日期
-        this.add.text(10, h - 10, '更新: 2026-04-07 15:34', {
+        this.add.text(10, h - 10, '更新: 2026-04-07', {
             fontSize: '14px',
             color: '#7f8c8d'
         }).setOrigin(0, 1);

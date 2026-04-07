@@ -5,7 +5,9 @@
       "WebFetch(domain:play.google.com)",
       "WebFetch(domain:apps.apple.com)",
       "WebFetch(domain:www.pockettactics.com)",
-      "Bash(pdfinfo:*)"
+      "Bash(pdfinfo:*)",
+      "WebFetch(domain:minimax-algeng-chat-tts.oss-cn-wulanchabu.aliyuncs.com)",
+      "Bash(grep -c '\"\"level\"\":' /Users/menherahan/Documents/Develop/LeXinShengWen_Test/js/levels.js)"
     ]
   }
 }

@@ -110,9 +110,7 @@ class GameScene extends Phaser.Scene {
         // 同时监听 pointerdown 作为后备（用于检测多指针）
         this.input.on('pointerdown', (ptr) => {
             const activePtrs = this.input.pointers.filter(p => p.isDown);
-            console.log(`pointerdown: active pointers = ${activePtrs.length}`);
             if (activePtrs.length >= 2) {
-                console.log('Multi-touch detected via pointerdown!');
                 const touchedTiles = [];
                 for (const p of activePtrs) {
                     const gameObjects = this.input.hitTest(p.x, p.y);
@@ -134,7 +132,6 @@ class GameScene extends Phaser.Scene {
                         const tileB = touchedTiles[j];
                         if (tileA.getData('type') === tileB.getData('type') &&
                             !tileA.getData('matched') && !tileB.getData('matched')) {
-                            console.log('MATCH via pointerdown!');
                             this.executeQuickMatch(tileA, tileB);
                             return;
                         }
@@ -146,8 +143,6 @@ class GameScene extends Phaser.Scene {
 
     // 处理原生多点触摸
     handleNativeTouch(touches) {
-        console.log('handleNativeTouch called, touches:', touches.length);
-
         if (this.isProcessing) return;
 
         const touchedTiles = [];
@@ -162,11 +157,8 @@ class GameScene extends Phaser.Scene {
             const x = (touch.clientX - rect.left) * scaleX;
             const y = (touch.clientY - rect.top) * scaleY;
 
-            console.log(`Touch ${i}: clientX=${touch.clientX}, clientY=${touch.clientY}, calc x=${x}, y=${y}`);
-
             // 使用 Phaser 的 hitTest
             const gameObjects = this.input.hitTest(x, y);
-            console.log(`Touch ${i}: hitTest found ${gameObjects.length} objects`);
 
             for (const obj of gameObjects) {
                 let tile = obj;
@@ -175,13 +167,10 @@ class GameScene extends Phaser.Scene {
                 }
                 if (tile && !tile.getData('matched') && this.isTileFree(tile)) {
                     touchedTiles.push(tile);
-                    console.log(`Touch ${i}: found tile type=${tile.getData('type')}`);
                     break;
                 }
             }
         }
-
-        console.log(`Total touchedTiles: ${touchedTiles.length}`);
 
         // 找到匹配的一对牌
         if (touchedTiles.length >= 2) {
@@ -190,11 +179,8 @@ class GameScene extends Phaser.Scene {
                     const tileA = touchedTiles[i];
                     const tileB = touchedTiles[j];
 
-                    console.log(`Checking pair: typeA=${tileA.getData('type')}, typeB=${tileB.getData('type')}`);
-
                     if (tileA.getData('type') === tileB.getData('type') &&
                         !tileA.getData('matched') && !tileB.getData('matched')) {
-                        console.log('MATCH! Executing quick match');
                         this.executeQuickMatch(tileA, tileB);
                         return;
                     }
@@ -445,7 +431,7 @@ class GameScene extends Phaser.Scene {
         });
 
         // 左下角更新日期
-        this.add.text(10, this.h - 10, '更新: 2026-04-07 15:34', {
+        this.add.text(10, this.h - 10, '更新: 2026-04-07', {
             fontSize: '14px',
             color: '#7f8c8d'
         }).setOrigin(0, 1);
