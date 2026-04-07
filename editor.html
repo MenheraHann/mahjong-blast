@@ -174,7 +174,7 @@
         </div>
         <div class="legend-item">
             <div class="legend-box selected"></div>
-            <span>选中(点击切换暗扣)</span>
+            <span>点击循环:白→黑→删</span>
         </div>
     </div>
 
@@ -184,8 +184,8 @@
     </div>
 
     <div class="instructions">
-        点击网格放置牌，再次点击移除牌。<br>
-        点击已有牌可切换明牌/暗扣状态。<br>
+        点击空格放白板，再点放背板，再点删除。<br>
+        右键点击任意牌直接删除。<br>
         导出JSON后发送给开发者即可更新游戏关卡。
     </div>
 
@@ -230,25 +230,37 @@
             // 已经有牌了
             if (tiles[key]) return false;
 
-            // Layer 0：检查周围8个点是否有Layer 0的牌
-            if (layer === 0) {
-                for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) {
-                        if (dr === 0 && dc === 0) continue;
-                        const nr = row + dr;
-                        const nc = col + dc;
-                        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
-                            const neighborKey = `0_${nr}_${nc}`;
-                            if (tiles[neighborKey]) return false;
-                        }
+            // 所有层：检查同层周围8个点是否有牌（自锁逻辑）
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    const nr = row + dr;
+                    const nc = col + dc;
+                    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+                        const neighborKey = `${layer}_${nr}_${nc}`;
+                        if (tiles[neighborKey]) return false;
                     }
                 }
             }
 
-            // Layer 1-3：检查底层是否有支撑牌
+            // Layer 1-3：检查底层是否有支撑牌（3×3范围内有任何牌即可）
             if (layer >= 1) {
-                const belowKey = `${layer - 1}_${row}_${col}`;
-                if (!tiles[belowKey]) return false;
+                let hasSupport = false;
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const nr = row + dr;
+                        const nc = col + dc;
+                        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+                            const supportKey = `${layer - 1}_${nr}_${nc}`;
+                            if (tiles[supportKey]) {
+                                hasSupport = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasSupport) break;
+                }
+                if (!hasSupport) return false;
             }
 
             return true;
@@ -481,23 +493,23 @@
                 const key = `${currentLayer}_${nearestRow}_${nearestCol}`;
 
                 if (tiles[key]) {
-                    // 已有牌 - 切换选中状态或暗扣
-                    if (selectedTile === key) {
-                        // 双击 - 切换暗扣
-                        tiles[key].faceDown = !tiles[key].faceDown;
+                    // 已有牌 - 循环切换状态：白板 → 背板 → 删除
+                    if (tiles[key].faceDown) {
+                        // 当前是背板，删除
+                        delete tiles[key];
                         selectedTile = null;
                     } else {
-                        // 单击选中
-                        selectedTile = key;
+                        // 当前是白板，切换到背板
+                        tiles[key].faceDown = true;
                     }
                 } else {
-                    // 没有牌 - 检查是否可以放置
+                    // 没有牌 - 检查是否可以放置（放白板）
                     if (canPlace(currentLayer, nearestRow, nearestCol)) {
                         tiles[key] = { faceDown: false };
                         selectedTile = null;
                     } else {
                         // 不能放置 - 提示或震动效果
-                        alert('此处不能放置牌！\n\nLayer 0: 周围8格已有牌\nLayer 1-3: 底层没有支撑牌');
+                        alert('此处不能放置牌！\n\n同层周围8格已有牌，或\nLayer 1-3: 底层3×3范围内没有支撑牌');
                     }
                 }
 
