@@ -212,6 +212,12 @@
         const canvas = document.getElementById('gridCanvas');
         const ctx = canvas.getContext('2d');
 
+        // 预加载牌背图片
+        const tileBackImg = new Image();
+        tileBackImg.src = 'assets/pixelMajong/00.png';
+        const whiteTileImg = new Image();
+        whiteTileImg.src = 'assets/pixelMajong/48.png';
+
         // 计算画布尺寸
         const PADDING = 60;
         canvas.width = (COLS - 1) * STEP_X + TILE_WIDTH + PADDING * 2;
@@ -387,54 +393,29 @@
             const tileX = tilePos.x;
             const tileY = tilePos.y;
 
-            // 牌背景
-            if (faceDown) {
-                ctx.fillStyle = '#1a1a2e';
+            // 使用实际图片
+            const img = faceDown ? tileBackImg : whiteTileImg;
+
+            // 绘制牌图片
+            if (img.complete) {
+                ctx.drawImage(img, tileX, tileY, TILE_WIDTH, TILE_HEIGHT);
             } else {
-                ctx.fillStyle = '#ecf0f1';
+                // 图片还没加载完成时用纯色
+                ctx.fillStyle = faceDown ? '#1a1a2e' : '#ecf0f1';
+                ctx.fillRect(tileX, tileY, TILE_WIDTH, TILE_HEIGHT);
             }
 
-            // 选中高亮
+            // 选中高亮边框
             if (isSelected) {
                 ctx.strokeStyle = '#e74c3c';
                 ctx.lineWidth = 3;
-            } else {
-                ctx.strokeStyle = faceDown ? '#444' : '#bdc3c7';
-                ctx.lineWidth = 1;
-            }
-
-            // 圆角矩形
-            const radius = 6;
-            ctx.beginPath();
-            ctx.moveTo(tileX + radius, tileY);
-            ctx.lineTo(tileX + TILE_WIDTH - radius, tileY);
-            ctx.quadraticCurveTo(tileX + TILE_WIDTH, tileY, tileX + TILE_WIDTH, tileY + radius);
-            ctx.lineTo(tileX + TILE_WIDTH, tileY + TILE_HEIGHT - radius);
-            ctx.quadraticCurveTo(tileX + TILE_WIDTH, tileY + TILE_HEIGHT, tileX + TILE_WIDTH - radius, tileY + TILE_HEIGHT);
-            ctx.lineTo(tileX + radius, tileY + TILE_HEIGHT);
-            ctx.quadraticCurveTo(tileX, tileY + TILE_HEIGHT, tileX, tileY + TILE_HEIGHT - radius);
-            ctx.lineTo(tileX, tileY + radius);
-            ctx.quadraticCurveTo(tileX, tileY, tileX + radius, tileY);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-
-            // 暗扣标记(斜线)
-            if (faceDown) {
-                ctx.strokeStyle = '#f39c12';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(tileX + 8, tileY + 8);
-                ctx.lineTo(tileX + TILE_WIDTH - 8, tileY + TILE_HEIGHT - 8);
-                ctx.moveTo(tileX + TILE_WIDTH - 8, tileY + 8);
-                ctx.lineTo(tileX + 8, tileY + TILE_HEIGHT - 8);
-                ctx.stroke();
+                ctx.strokeRect(tileX, tileY, TILE_WIDTH, TILE_HEIGHT);
             }
 
             // 层标记(左上角小数字)
             ctx.fillStyle = faceDown ? '#f39c12' : '#7f8c8d';
-            ctx.font = 'bold 11px Arial';
-            ctx.fillText(`L${layer}`, tileX + 4, tileY + 14);
+            ctx.font = 'bold 10px Arial';
+            ctx.fillText(`L${layer}`, tileX + 2, tileY + 12);
         }
 
         // 绘制当前层的高亮和锁定状态
