@@ -1111,7 +1111,7 @@ class GameScene extends Phaser.Scene {
                 container.setData('isFree', true);
                 container.setData('baseImgScale', imgScale);
                 container.setData('isFaceDown', t.faceDown || false);
-                container.setInteractive(new Phaser.Geom.Rectangle(-25.5 * imgScale, -38 * imgScale, 51 * imgScale, 76 * imgScale), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
+                container.setInteractive(new Phaser.Geom.Rectangle(-25.5 * imgScale * 2, -38 * imgScale * 2, 51 * imgScale * 2, 76 * imgScale * 2), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
                 container.on('pointerdown', () => this.onTileClick(container));
 
                 // 深度规则：右压左、下压上
@@ -1293,7 +1293,7 @@ class GameScene extends Phaser.Scene {
                 container.setData('isFree', true);
                 container.setData('baseImgScale', imgScale);
 
-                container.setInteractive(new Phaser.Geom.Rectangle(-25.5 * imgScale, -38 * imgScale, 51 * imgScale, 76 * imgScale), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
+                container.setInteractive(new Phaser.Geom.Rectangle(-25.5 * imgScale * 2, -38 * imgScale * 2, 51 * imgScale * 2, 76 * imgScale * 2), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
                 container.on('pointerdown', () => this.onTileClick(container));
 
                 // 层深度：根据层级设置基础深度
