@@ -1016,8 +1016,8 @@ class GameScene extends Phaser.Scene {
 
     // 牌面整体居中 —— 14×16 交点网格坐标系
     createBoard() {
-        const gridCols = 12; // 交点列数
-        const gridRows = 14; // 交点行数
+        const gridCols = 11; // 交点列数
+        const gridRows = 13; // 交点行数
         const topBarH = 90;
         const bottomBarH = 90;
         const padding = 15;
@@ -1032,8 +1032,8 @@ class GameScene extends Phaser.Scene {
         // 底层牌占偶数行偶数列，共 6 列(7行)的有效占用区
         // 有效区域 = (gridCols - 1) / 2 * tileSize（偶数列 × 牌宽）
         // 有效区域 = (gridRows - 1) / 2 * tileHeight（偶数行 × 牌高）
-        const effCols = (gridCols) / 2; // 6 列底层牌列数
-        const effRows = (gridRows) / 2; // 7 行底层牌行数
+        const effCols = Math.floor((gridCols - 1) / 2); // 5 列底层牌列数
+        const effRows = Math.floor((gridRows - 1) / 2); // 6 行底层牌行数
         const tileByW = availW / effCols;
         const tileByH = (availH / effRows) / tileRatio;
         const rawSize = Math.floor(Math.min(tileByW, tileByH));
