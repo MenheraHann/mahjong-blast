@@ -1769,7 +1769,7 @@ class GameScene extends Phaser.Scene {
         // 判断左右关系：x小的在左，偏移负；x大的在右，偏移正
         const tileW = tileA.getData('tileW');
         const halfTile = tileW / 2;
-        const maxOffset = 200;
+        const maxOffset = 250;
         // 向左偏移不能超过左边缘，向右偏移不能超过右边缘
         const leftOffset = Math.min(maxOffset, cx - halfTile);
         const rightOffset = Math.min(maxOffset, this.w - cx - halfTile);
