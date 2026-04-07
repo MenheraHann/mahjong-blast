@@ -2178,7 +2178,7 @@ class GameScene extends Phaser.Scene {
         }
 
         const now = Date.now();
-        const QUICK_CLICK_THRESHOLD = 200; // 200ms内快速连点
+        const QUICK_CLICK_THRESHOLD = 150; // 150ms内快速连点
 
         // 检查是否快速连点匹配（直接消除，跳过选中动画）
         if (this.lastClickTile && this.lastClickTile !== tile) {
