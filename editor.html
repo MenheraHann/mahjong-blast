@@ -223,6 +223,181 @@
         canvas.width = (COLS - 1) * STEP_X + TILE_WIDTH + PADDING * 2;
         canvas.height = (ROWS - 1) * STEP_Y + TILE_HEIGHT + PADDING * 2;
 
+        // 获取下层所有牌在某范围内（row±1, col±1）
+        function getLowerTilesInRange(layer, row, col) {
+            const result = [];
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    const nr = row + dr;
+                    const nc = col + dc;
+                    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+                        const key = `${layer}_${nr}_${nc}`;
+                        if (tiles[key]) result.push({ row: nr, col: nc });
+                    }
+                }
+            }
+            return result;
+        }
+
+        // 检查支撑点是否在容差范围内
+        function near(x1, y1, x2, y2, tol = 0.12) {
+            return Math.abs(x1 - x2) <= tol && Math.abs(y1 - y2) <= tol;
+        }
+
+        // 严格支撑验证：上层牌中心点(row, col)必须落在下层牌的中心/边中点/角点
+        function hasStrictSupport(layer, row, col) {
+            const lowerTiles = getLowerTilesInRange(layer - 1, row, col);
+            if (lowerTiles.length === 0) return false;
+
+            // 上层牌中心坐标
+            const cx = col;
+            const cy = row;
+
+            // === 1张支撑：牌中心对准下层牌中心 ===
+            for (const lt of lowerTiles) {
+                if (near(cx, cy, lt.col, lt.row)) return true;
+            }
+
+            // === 2张支撑 ===
+            for (let i = 0; i < lowerTiles.length; i++) {
+                for (let j = i + 1; j < lowerTiles.length; j++) {
+                    const a = lowerTiles[i];
+                    const b = lowerTiles[j];
+
+                    // 两张牌不相邻（同位置或行列差都>1）则无接触
+                    const dr = Math.abs(a.row - b.row);
+                    const dc = Math.abs(a.col - b.col);
+                    if (dr > 2 || dc > 2) continue;
+
+                    // 边中点：两张牌在某条边上相遇
+                    // 情况1：左右相邻（dc=2, dr=0）— 边对边
+                    //   接触点在 (a.row, a.col+0.5) = (b.row, b.col-0.5)
+                    if (dr === 0 && dc === 2) {
+                        const mx = (a.col + b.col) / 2;
+                        const my = a.row;
+                        if (near(cx, cy, mx, my)) return true;
+                    }
+                    // 情况2：上下相邻（dc=0, dr=2）— 边对边
+                    //   接触点在 (a.row+0.5, a.col) = (b.row-0.5, b.col)
+                    if (dc === 0 && dr === 2) {
+                        const mx = a.col;
+                        const my = (a.row + b.row) / 2;
+                        if (near(cx, cy, mx, my)) return true;
+                    }
+                    // 情况3：dc=2, dr=2 — 对角情况（斜角）
+                    //   两张牌对角相触，接触点在对角交点
+                    if (dc === 2 && dr === 2) {
+                        // a的右上角(cx-0.5, cy+0.5) 对 b的左上角(cx+0.5, cy-0.5) 等
+                        // 四个角点交集中于一点
+                        const corners = [
+                            { x: a.col + 0.5, y: a.row - 0.5 }, // a右上 vs b左下
+                            { x: a.col - 0.5, y: a.row - 0.5 }, // a左上 vs b右下
+                            { x: a.col + 0.5, y: a.row + 0.5 }, // a右下 vs b左上
+                            { x: a.col - 0.5, y: a.row + 0.5 }, // a左下 vs b右上
+                        ];
+                        for (const pt of corners) {
+                            if (near(cx, cy, pt.x, pt.y)) return true;
+                        }
+                    }
+                    // 情况4：dc=2, dr=1 — 边角接触（a的右边缘中点碰b的角）
+                    //   a在左，b在右，a的右边缘中点(ar, ac+0.5) 碰 b的左下角或左上角
+                    if (dc === 2 && dr === 1) {
+                        const [left, right] = a.col < b.col ? [a, b] : [b, a];
+                        // left的右边缘中点
+                        const edgePt = { x: left.col + 0.5, y: left.row };
+                        // right的左下角(rr-0.5, rc-0.5)和左上角(rr-0.5, rc+0.5)
+                        const rightCorners = [
+                            { x: right.col - 0.5, y: right.row - 0.5 },
+                            { x: right.col - 0.5, y: right.row + 0.5 },
+                        ];
+                        for (const pt of rightCorners) {
+                            if (near(edgePt.x, edgePt.y, pt.x, pt.y)) return true;
+                        }
+                    }
+                    // 情况5：dc=1, dr=2 — 边上中点碰角
+                    if (dc === 1 && dr === 2) {
+                        const [top, bottom] = a.row < b.row ? [a, b] : [b, a];
+                        // top的下边缘中点
+                        const edgePt = { x: top.col, y: top.row + 0.5 };
+                        // bottom的左上角和右上角
+                        const bottomCorners = [
+                            { x: bottom.col - 0.5, y: bottom.row - 0.5 },
+                            { x: bottom.col + 0.5, y: bottom.row - 0.5 },
+                        ];
+                        for (const pt of bottomCorners) {
+                            if (near(edgePt.x, edgePt.y, pt.x, pt.y)) return true;
+                        }
+                    }
+                }
+            }
+
+            // === 3张支撑：三个角对在一起 ===
+            for (let i = 0; i < lowerTiles.length; i++) {
+                for (let j = i + 1; j < lowerTiles.length; j++) {
+                    for (let k = j + 1; k < lowerTiles.length; k++) {
+                        const a = lowerTiles[i], b = lowerTiles[j], c = lowerTiles[k];
+                        // 三个角点相同
+                        const aCorners = [
+                            { x: a.col - 0.5, y: a.row - 0.5 },
+                            { x: a.col + 0.5, y: a.row - 0.5 },
+                            { x: a.col - 0.5, y: a.row + 0.5 },
+                            { x: a.col + 0.5, y: a.row + 0.5 },
+                        ];
+                        for (const ac of aCorners) {
+                            let count = 1;
+                            const bMatch = bCorners => {
+                                for (const bc of bCorners) {
+                                    if (near(ac.x, ac.y, bc.x, bc.y)) return true;
+                                }
+                                return false;
+                            };
+                            const bCorners = [
+                                { x: b.col - 0.5, y: b.row - 0.5 },
+                                { x: b.col + 0.5, y: b.row - 0.5 },
+                                { x: b.col - 0.5, y: b.row + 0.5 },
+                                { x: b.col + 0.5, y: b.row + 0.5 },
+                            ];
+                            const cCorners = [
+                                { x: c.col - 0.5, y: c.row - 0.5 },
+                                { x: c.col + 0.5, y: c.row - 0.5 },
+                                { x: c.col - 0.5, y: c.row + 0.5 },
+                                { x: c.col + 0.5, y: c.row + 0.5 },
+                            ];
+                            if (bMatch(bCorners) && bMatch(cCorners)) {
+                                if (near(cx, cy, ac.x, ac.y)) return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === 4张支撑：四个角对在一起 ===
+            // 四个角的交汇点只可能是 (整数±0.5, 整数±0.5) 即网格交叉点
+            // 收集所有可能的角点，看是否有4个角在同一点
+            const cornerMap = new Map(); // "x,y" -> count
+            for (const lt of lowerTiles) {
+                const corners = [
+                    { x: lt.col - 0.5, y: lt.row - 0.5 },
+                    { x: lt.col + 0.5, y: lt.row - 0.5 },
+                    { x: lt.col - 0.5, y: lt.row + 0.5 },
+                    { x: lt.col + 0.5, y: lt.row + 0.5 },
+                ];
+                for (const pt of corners) {
+                    // 键值取整到小数点后1位，避免浮点精度问题
+                    const key = `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+                    cornerMap.set(key, (cornerMap.get(key) || 0) + 1);
+                }
+            }
+            for (const [key, count] of cornerMap) {
+                if (count >= 4) {
+                    const [x, y] = key.split(',').map(Number);
+                    if (near(cx, cy, x, y)) return true;
+                }
+            }
+
+            return false;
+        }
+
         // 检查某位置是否可以放置指定层级的牌
         function canPlace(layer, row, col) {
             const key = `${layer}_${row}_${col}`;
@@ -243,24 +418,9 @@
                 }
             }
 
-            // Layer 1-3：检查底层是否有支撑牌（3×3范围内有任何牌即可）
+            // Layer 1-3：严格支撑验证
             if (layer >= 1) {
-                let hasSupport = false;
-                for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) {
-                        const nr = row + dr;
-                        const nc = col + dc;
-                        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
-                            const supportKey = `${layer - 1}_${nr}_${nc}`;
-                            if (tiles[supportKey]) {
-                                hasSupport = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (hasSupport) break;
-                }
-                if (!hasSupport) return false;
+                if (!hasStrictSupport(layer, row, col)) return false;
             }
 
             return true;

@@ -366,7 +366,23 @@ class GameScene extends Phaser.Scene {
             fontStyle: 'bold'
         }).setOrigin(0.5).setDepth(6001);
 
-        const restartBtn = this.add.text(this.w / 2, this.h / 2 - 40, '重新开始', {
+        const nextBtn = this.add.text(this.w / 2, this.h / 2 - 40, '下一关', {
+            fontSize: '48px',
+            color: '#ffffff',
+            backgroundColor: '#27ae60',
+            padding: { x: 80, y: 24 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(6001);
+
+        nextBtn.on('pointerdown', () => {
+            this.sound.play('sfx-button');
+            this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2, nextBtn);
+            // 直接跳转下一关（跳过当前关）
+            if (this.currentLevel < 20) {
+                this.scene.start('GameScene', { level: this.currentLevel + 1 });
+            }
+        });
+
+        const restartBtn = this.add.text(this.w / 2, this.h / 2 + 60, '重新开始', {
             fontSize: '48px',
             color: '#ffffff',
             backgroundColor: '#e67e22',
@@ -375,11 +391,11 @@ class GameScene extends Phaser.Scene {
 
         restartBtn.on('pointerdown', () => {
             this.sound.play('sfx-button');
-            this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2);
+            this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2, nextBtn);
             this.scene.restart({ level: this.currentLevel });
         });
 
-        const menuBtn2 = this.add.text(this.w / 2, this.h / 2 + 60, '返回主菜单', {
+        const menuBtn2 = this.add.text(this.w / 2, this.h / 2 + 160, '返回主菜单', {
             fontSize: '48px',
             color: '#ffffff',
             backgroundColor: '#3498db',
@@ -388,7 +404,7 @@ class GameScene extends Phaser.Scene {
 
         menuBtn2.on('pointerdown', () => {
             this.sound.play('sfx-button');
-            this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2);
+            this.destroyDialog(overlay, dialogBg, title, restartBtn, menuBtn2, nextBtn);
             this.scene.start('HomeScene');
         });
     }
@@ -1095,13 +1111,25 @@ class GameScene extends Phaser.Scene {
         const allPositions = tiles.map(t => `${t.layer}_${t.row}_${t.col}`);
         const pairCount = Math.floor(allPositions.length / 2);
         const types = [];
-        for (let i = 0; i < pairCount; i++) {
-            const type = Math.floor(Math.random() * 34);
-            types.push(type, type);
-        }
-        for (let i = types.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [types[i], types[j]] = [types[j], types[i]];
+
+        // 第一关固定牌型
+        if (this.currentLevel === 1) {
+            // L0: col=2和col=8相同, col=4和col=6相同
+            // L1: col=3和col=7相同
+            const typeA = Math.floor(Math.random() * 34);
+            const typeB = Math.floor(Math.random() * 34);
+            const typeC = Math.floor(Math.random() * 34);
+            // 按位置排序后赋值: L0_col2, L0_col4, L0_col6, L0_col8, L1_col3, L1_col7
+            types.push(typeA, typeB, typeB, typeA, typeC, typeC);
+        } else {
+            for (let i = 0; i < pairCount; i++) {
+                const type = Math.floor(Math.random() * 34);
+                types.push(type, type);
+            }
+            for (let i = types.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [types[i], types[j]] = [types[j], types[i]];
+            }
         }
 
         let tileIdx = 0;
@@ -2202,14 +2230,16 @@ class GameScene extends Phaser.Scene {
         if (tile.getData('isCovered')) {
             const tileImg = tile.list[0];
             if (tileImg) {
-                // 气泡背景
+                const tileW = tile.getData('tileW') || 54;
+                const tileH = tile.getData('tileH') || 79;
+                // 使用容器的世界坐标（container.position）来定位气泡
                 const bubbleWidth = 280;
                 const bubbleHeight = 60;
-                const bubbleX = tileImg.x;
-                const bubbleY = tileImg.y - 70;
+                const bubbleX = tile.x; // 容器世界坐标
+                const bubbleY = tile.y - tileH / 2 - 40; // 在牌上方
 
                 const bubbleBg = this.add.graphics();
-                bubbleBg.fillStyle(0x000000, 0.85);
+                bubbleBg.fillStyle(0x2c3e50, 0.95);
                 bubbleBg.fillRoundedRect(
                     bubbleX - bubbleWidth / 2,
                     bubbleY - bubbleHeight / 2,
@@ -2217,22 +2247,22 @@ class GameScene extends Phaser.Scene {
                     bubbleHeight,
                     12
                 );
-                bubbleBg.setDepth(9999);
+                bubbleBg.setDepth(99999);
 
                 // 气泡文字
-                const bubbleText = this.add.text(bubbleX, bubbleY, '需要移除上面的牌', {
-                    fontSize: '24px',
-                    color: '#ffffff',
-                    fontFamily: 'Arial, sans-serif'
-                }).setOrigin(0.5).setDepth(9999);
+                const bubbleText = this.add.text(bubbleX, bubbleY, '被上方的牌锁住了', {
+                    fontSize: '28px',
+                    color: '#f1c40f',
+                    fontFamily: 'Arial, sans-serif',
+                    stroke: '#2c3e50',
+                    strokeThickness: 4
+                }).setOrigin(0.5).setDepth(99999);
 
-                // 1.5秒后气泡消失
-                this.time.delayedCall(1500, () => {
+                // 0.5秒后气泡消失
+                this.time.delayedCall(500, () => {
                     this.tweens.add({
                         targets: [bubbleBg, bubbleText],
                         alpha: 0,
-                        scaleX: 0.8,
-                        scaleY: 0.8,
                         duration: 300,
                         ease: 'Sine.easeIn',
                         onComplete: () => {

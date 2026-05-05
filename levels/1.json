@@ -4,12 +4,6 @@
   "tiles": [
     {
       "row": 6,
-      "col": 0,
-      "layer": 0,
-      "faceDown": false
-    },
-    {
-      "row": 6,
       "col": 2,
       "layer": 0,
       "faceDown": false
@@ -34,31 +28,13 @@
     },
     {
       "row": 6,
-      "col": 10,
-      "layer": 0,
-      "faceDown": false
-    },
-    {
-      "row": 6,
-      "col": 2,
+      "col": 3,
       "layer": 1,
       "faceDown": false
     },
     {
       "row": 6,
-      "col": 4,
-      "layer": 1,
-      "faceDown": false
-    },
-    {
-      "row": 6,
-      "col": 6,
-      "layer": 1,
-      "faceDown": false
-    },
-    {
-      "row": 6,
-      "col": 8,
+      "col": 7,
       "layer": 1,
       "faceDown": false
     }
